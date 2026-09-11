@@ -1,0 +1,79 @@
+[workspace]
+resolver = "2"
+members = ["api", "app", "core", "reconcile", "storage", "testkit", "worker"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# MSRV 只声明不钉通道：cargo 据此拦截过新的语法与依赖，升级 stable 不受影响
+rust-version = "1.95"
+authors = ["{{authors}}"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.release-size]
+inherits = "release"
+opt-level = "z"
+
+[workspace.dependencies]
+# ── workspace 内部 crate（禁止表外依赖边；本表不含任何反向边，需要时走
+#    「core 定 trait / 面实现 / app 注入」三角）────────────────────────────
+{{crate_prefix}}-api = { path = "api" }
+{{crate_prefix}}-core = { path = "core" }
+# 期望集 reconcile 框架：可选，app 默认不依赖；需要时再加边并在评审说明
+{{crate_prefix}}-reconcile = { path = "reconcile" }
+{{crate_prefix}}-storage = { path = "storage" }
+{{crate_prefix}}-worker = { path = "worker" }
+# 测试专用共享件：只允许出现在各 crate 的 [dev-dependencies]
+{{crate_prefix}}-testkit = { path = "testkit" }
+
+# ── 第三方：版本与 feature 只在此声明一次，成员一律 `{ workspace = true }`；
+#    每个依赖旁写清为什么，没理由的依赖不该在这张表里 ──────────────────────
+# 错误的「载体」而非「分类」：core 的 `AppError::Internal/Storage` 用它承接下游
+# 的具体错误类型（core 在依赖图下游，看不见 storage 的错误枚举）；reconcile 用
+# 它承接单元与期望集来源的失败。分类仍归各层的 thiserror 枚举
+anyhow = "1"
+# `Arc<dyn Storage>` 与各仓储 trait 是 trait 对象，async fn 进 dyn trait 要它
+async-trait = "0.1"
+# HTTP 展示层框架；补丁号一并钉住——提取器拒绝的状态码分档（api/src/extract.rs）
+# 依赖具体版本的行为，升级要连同那三条单测一起复核
+axum = "0.8.9"
+# 进程级 CryptoProvider 显式装 ring：sqlx 的 PG TLS 走 rustls，缺 provider 是
+# 运行期 panic 不是编译错误；不用 aws-lc（C/cmake 构建链，交叉编译纯负担）
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+    "logging",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# 配置反序列化失败时给出字段路径（教学式错误信息的来源）
+serde_path_to_error = "0.1"
+# `tls-rustls-ring` 而非 `tls-rustls`（后者拉进 aws-lc-rs）；`macros` 不可省：
+# `sqlx::migrate!` 定义在该 feature 下，仅开 `migrate` 找不到宏
+sqlx = { version = "0.9", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls-ring",
+    "sqlite",
+    "postgres",
+    "migrate",
+    "macros",
+] }
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+toml = "1"
+# 仅测试用（api 的 dev-dependencies）：`ServiceExt::oneshot` 直打 Router 做黑盒
+tower = { version = "0.5", default-features = false, features = ["util"] }
+# trace：请求级日志；timeout：悬挂请求不能拖死优雅排空（axum 官方
+# graceful-shutdown 例子的写法）。两个 layer 内联在路由装配处，不建 middleware 目录
+tower-http = { version = "0.7.0", features = ["trace", "timeout"] }
+tracing = "0.1"
+# env-filter：`RUST_LOG` 过滤。只出 compact 一种形态，不开 `json`（默认 feature 已够）
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

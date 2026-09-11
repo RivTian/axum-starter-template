@@ -1,0 +1,28 @@
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Rust 构建产物
+/target/
+**/*.rs.bk
+
+# SQLite：`sqlite.path` 留空时库落在 `<安装根>/data/` 下，第一次 run 就会生成。安装根
+# 是可执行文件所在目录，所以 `cargo run` 出来的库在 /target/ 里、本条兜的是把路径指到
+# 仓库内时。边车文件不能漏：-wal 里是尚未 checkpoint 的真实数据行
+*.db
+*.db-wal
+*.db-shm
+
+# Coverage / test artifacts
+coverage/
+*.lcov
+
+# Temporary files
+tmp/
+.temp/
+
+# 本地会话工具目录
+.claude/

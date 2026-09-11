@@ -1,0 +1,59 @@
+# 从仓库根运行。构建产物落 `target/`。
+#
+# 三条门禁（`check`）就是 CI 该跑的全部；任何 CI 配置只需要调它们。
+
+ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+export CARGO_TARGET_DIR := $(ROOT)/target
+
+APP_CRATE := {{crate_prefix}}-app
+BIN := {{crate_name}}
+CARGO ?= cargo
+
+.DEFAULT_GOAL := help
+
+.PHONY: help build release run test fmt fmt-check lint coverage check clean
+
+help:
+	@echo "{{project-name}} — build targets"
+	@echo
+	@echo "  build               debug-build the workspace"
+	@echo "  release             build the release binary"
+	@echo "  run                 run the debug binary"
+	@echo "  test                run workspace tests"
+	@echo "  fmt / fmt-check     format / check Rust code"
+	@echo "  lint                run clippy with warnings denied"
+	@echo "  coverage            generate coverage/lcov.info"
+	@echo "  check               fmt-check + lint + test"
+	@echo "  clean               clean build artifacts"
+
+build:
+	$(CARGO) build --workspace --locked
+
+release:
+	$(CARGO) build --release -p $(APP_CRATE) --locked
+	@ls -lh target/release/$(BIN)
+
+run:
+	$(CARGO) run -p $(APP_CRATE)
+
+test:
+	$(CARGO) test --workspace --locked
+
+fmt:
+	$(CARGO) fmt --all
+
+fmt-check:
+	$(CARGO) fmt --all -- --check
+
+lint:
+	$(CARGO) clippy --workspace --all-targets --locked -- -D warnings
+
+coverage:
+	mkdir -p coverage
+	$(CARGO) llvm-cov --workspace --locked --lcov --output-path coverage/lcov.info
+
+check: fmt-check lint test
+
+clean:
+	$(CARGO) clean
+	rm -rf coverage

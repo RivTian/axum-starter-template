@@ -1,0 +1,37 @@
+# cargo-generate 模板定义（只属于模板仓库，不进生成结果）。
+#
+# 两个名字分开：`project-name`（cargo-generate 内置，由 `--name` 或交互给出）是项目名，
+# 决定二进制名 `{{crate_name}}` 与环境变量前缀；`crate_prefix` 是包名前缀，决定
+# `<prefix>-core` / `<prefix>-app` 这些 workspace 成员的名字。即「项目叫 acme-api、
+# 包叫 acme-*」的形态。派生变量见 hooks/pre.rhai。
+
+[template]
+cargo_generate_version = ">=0.24.0"
+# 模板仓库自己的东西：设计与调研文档、hook 脚本、构建产物、本地会话目录
+# Makefile / README.md / scripts/ 属于模板仓库自己（维护工具与「怎么用这个模板」），
+# 生成的项目拿到的是 Makefile.project / README.project.md → 由 hooks/post.rhai 改名
+# hooks/ 不能进 ignore：ignore 在 post hook 之前生效，脚本会先于自己被删掉——
+# 由 hooks/post.rhai 在收尾时自删
+ignore = [
+    "docs",
+    "scripts",
+    "target",
+    "tmp",
+    ".claude",
+    ".DS_Store",
+    "Makefile",
+    "README.md",
+    # 模板仓库的门禁跑的是 `make gen` / `make verify`，生成结果的 Makefile 里没有这两个
+    # 目标（它只有三条门禁）。放进去只会给每个新项目一个开箱即红的 workflow
+    ".github",
+]
+# 这些文件里有与 Liquid 冲突的 `{{`（Rust 格式串转义花括号），不做替换、原样复制。
+# 它们不含任何占位符，加进来只是为了让 Liquid 不去解析它们；列表随文件增减维护
+exclude = ["core/src/config/error.rs"]
+
+[placeholders]
+crate_prefix = { type = "string", prompt = "Crate name prefix (packages become <prefix>-core, <prefix>-app, ...; e.g. project acme-api -> prefix acme)", regex = "^[a-z][a-z0-9]*(-[a-z0-9]+)*$" }
+
+[hooks]
+pre = ["hooks/pre.rhai"]
+post = ["hooks/post.rhai"]
