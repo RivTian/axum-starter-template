@@ -1,0 +1,22 @@
+[package]
+name = "{{crate_prefix}}-reconcile"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "期望集 reconcile 框架（可选）：UnitSpec / UnitFactory / plan_reconcile / UnitManager / drive"
+
+[dependencies]
+# 只依赖 core：时间基元（TimestampMs / now_ms）与事件总线（驱动循环的唤醒源）
+{{crate_prefix}}-core = { workspace = true }
+
+# UnitExit::Failed 与 UnitSource::list_desired 的错误载体：单元与期望集来源的
+# 失败形态由业务决定，框架只负责打印与计数，不该去认具体错误类型
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+# test-util：驱动循环的节奏测试用 start_paused 模拟时钟，不等真实时间
+tokio = { workspace = true, features = ["test-util"] }
