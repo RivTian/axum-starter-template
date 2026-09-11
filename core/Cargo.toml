@@ -1,0 +1,20 @@
+[package]
+name = "{{crate_prefix}}-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "叶子内核：配置、错误基座、事件总线、指标、顶层任务监管、构建元数据"
+
+[dependencies]
+anyhow = { workspace = true }
+# ensure_crypto_provider：进程级 ring provider 安装（见 tls.rs 模块头）
+rustls = { workspace = true }
+serde = { workspace = true }
+# 配置反序列化失败时定位字段路径
+serde_path_to_error = { workspace = true }
+thiserror = { workspace = true }
+# watch（配置分发）/ broadcast（事件总线）/ JoinSet（顶层任务监管）；不 spawn 常驻任务
+tokio = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }

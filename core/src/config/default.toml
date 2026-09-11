@@ -1,0 +1,62 @@
+# {{project-name}} 运行时配置
+#
+# 本文件在首次启动时由程序落盘，取值与内置默认值逐字段一致：直接启动即可运行，
+# 按需改哪项就改哪项。
+#
+# 约定：
+#   - 任意字符串值都支持环境变量占位符（语法见 README；注释里不写示例：
+#     占位符展开对注释同样生效，写了会导致启动时解析失败）；
+#   - 相对路径一律相对<安装根>（= 可执行文件所在目录）解析，既不是本文件所在目录
+#     （那是 <安装根>/config/，差一级），也不是进程 cwd；用 --config 把本文件挂到
+#     别处时这条不变，那种场景请直接写绝对路径；
+#   - [http]、[runtime]、[storage] 三段不可热重载，改动后需要重启进程才生效；
+#   - [ticker] 段可热重载（SIGHUP），enabled 为半热（启动时已拉起才热生效），
+#     runtime 绑定不可热；
+#   - 附加 runtime：加 [runtime.extra.<name>] 子表（worker_threads /
+#     max_blocking_threads），再在面的段里写 runtime = "<name>"。缺省都没有。
+
+[http]
+# 监听地址（默认全网卡）与端口
+host = "0.0.0.0"
+port = 8080
+# 单个请求的处理上限（毫秒），超时即切断
+request_timeout_ms = 30000
+
+[runtime]
+# 主 runtime 的 worker 线程数；0 = 跟随 CPU 数
+worker_threads = 0
+# blocking 池上限（spawn_blocking 与 SQLite 驱动共用）
+max_blocking_threads = 512
+
+[storage]
+# 持久化后端：sqlite | postgres
+backend = "sqlite"
+
+[storage.sqlite]
+# 数据库文件路径；留空表示 <安装根>/data/{{crate_name}}.db（安装根 = 可执行文件所在目录）
+path = ""
+# 写锁等待上限（毫秒）
+busy_timeout_ms = 5000
+# 只读连接池大小（写连接固定为 1，保证单写者）
+read_pool_size = 4
+
+[storage.postgres]
+host = "127.0.0.1"
+port = 5432
+dbname = "{{crate_name}}"
+user = "{{crate_name}}"
+# 密码来源优先级：password_env > password_file > password
+# password_env 填环境变量名；password_file 填 secret 文件路径；password 为明文，仅限实验环境
+password_env = "{{env_prefix}}_PG_PASSWORD"
+password_file = ""
+password = ""
+# TLS 模式：disable | prefer | require
+sslmode = "prefer"
+pool_size = 5
+connect_timeout_ms = 5000
+
+[ticker]
+# 启动闸：false 时不注册 ticker 任务（启动日志会 warn）；半热
+enabled = true
+# 打点周期（毫秒）；可热
+interval_ms = 1000
