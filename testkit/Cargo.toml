@@ -1,0 +1,18 @@
+[package]
+name = "{{crate_prefix}}-testkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+# 测试基建不发布：不进任何发布产物的依赖图
+publish = false
+description = "测试专用共享件：临时目录、日志捕获、端口派生（仅 dev-dependencies 消费）"
+
+[dependencies]
+{{crate_prefix}}-core = { workspace = true }
+# temp_storage：一用例一库的 SQLite 门面，api 与 app 的测试共用
+{{crate_prefix}}-storage = { workspace = true }
+
+tracing = { workspace = true }
+# 测试用的全局 subscriber：事件按线程路由到各用例的缓冲（见 lib.rs 的 install 注释）
+tracing-subscriber = { workspace = true }
