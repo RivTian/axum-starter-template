@@ -1,0 +1,28 @@
+[package]
+name = "{{crate_prefix}}-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "HTTP 展示层：axum 窄门面、健康端点、错误映射、JSON 404"
+
+[dependencies]
+{{crate_prefix}}-core = { workspace = true }
+{{crate_prefix}}-storage = { workspace = true }
+
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+# trace / timeout 两个内联 layer
+tower-http = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+{{crate_prefix}}-testkit = { workspace = true }
+# 只为错误链测试：用 `Context` 在存储错误外面垫几层，验证语义映射照样找得到根因
+anyhow = { workspace = true }
+# oneshot 直打 Router 的黑盒测试（不 bind 端口）
+tower = { workspace = true }
