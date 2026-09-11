@@ -1,0 +1,18 @@
+[package]
+name = "{{crate_prefix}}-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "示例任务面 ticker：面级 crate 的窄门面、可热配置、旁路纪律与 runtime 绑定的参照"
+
+[dependencies]
+{{crate_prefix}}-core = { workspace = true }
+
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+# test-util：节奏测试用 start_paused 模拟时钟，不等真实时间
+tokio = { workspace = true, features = ["test-util"] }
