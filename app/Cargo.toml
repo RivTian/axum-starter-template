@@ -1,0 +1,27 @@
+[package]
+name = "{{crate_prefix}}-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "装配层：CLI、tracing 初始化、runtime 装配、引导、信号与生命周期编排；产出二进制 {{crate_name}}"
+
+[[bin]]
+name = "{{crate_name}}"
+path = "src/main.rs"
+
+[dependencies]
+{{crate_prefix}}-api = { workspace = true }
+{{crate_prefix}}-core = { workspace = true }
+{{crate_prefix}}-storage = { workspace = true }
+{{crate_prefix}}-worker = { workspace = true }
+
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+# subscriber 初始化全 workspace 仅此一处
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+{{crate_prefix}}-testkit = { workspace = true }
