@@ -1,0 +1,143 @@
+# 模板仓库自己的门禁。
+#
+# 这个仓库**不可直接构建**：源码里是 `{{crate_prefix}}` 这类 cargo-generate 占位符，
+# 在仓库根跑 cargo 会死在无法解析的 Cargo.toml 上。所有 cargo 命令都由 Makefile 放进
+# 「生成目录」里跑（见 Makefile 文件头），CI 只负责把环境备齐再调 make。
+#
+# 两个 job 不合并：check 是增量门禁（复用生成目录的 target/，带一个真 PostgreSQL），
+# verify 走 cargo-generate 自己的 `--test`，换一组名字、从零编译——并进 check 就没有
+# 「从零」了，而「只在增量下才绿」恰好是 verify 要抓的东西。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# 门禁是全量编译，同一分支上排队跑旧 commit 没有意义
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Makefile 里是 `GEN_NAME ?=`，所以这里给的值会被 make 采纳。PG 门控变量名也从
+  # 它推导（见 check job 的 derive 步骤），两处共用一个来源
+  GEN_NAME: tpl-project
+  GEN_PREFIX: tplx
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # storage 的 PG 契约用例在 `<ENV_PREFIX>_TEST_PG_HOST` 缺失时整组跳过。没有这个
+    # service，PG 后端在整个项目里就一次都没被执行过，而门禁照样全绿
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: rust toolchain
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup component add rustfmt clippy
+
+      # 只缓存 ~/.cargo 与生成目录的 target/。registry 里的依赖对 cargo 是不可变源，
+      # 指纹不看 mtime，所以依赖的编译产物能跨 run 复用；workspace 内的 7 个 crate 每次
+      # 被 `make gen --overwrite` 重写，本来就会重编
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cache/axum-starter-template/${{ env.GEN_NAME }}/target/
+          key: check-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: check-${{ runner.os }}-
+
+      # 已装且版本满足时 cargo install 直接跳过，配合上面的 ~/.cargo/bin 缓存即热路径为零
+      - name: install cargo-generate
+        run: cargo install cargo-generate --version '^0.24' --locked
+
+      # 规则与 hooks/pre.rhai 一致：project-name →（`-`→`_`）crate_name → 大写 = env_prefix
+      - name: derive the postgres env prefix from GEN_NAME
+        run: |
+          prefix="$(printf '%s' "$GEN_NAME" | tr 'a-z-' 'A-Z_')_TEST_PG"
+          {
+            echo "PG_ENV_PREFIX=$prefix"
+            echo "${prefix}_HOST=127.0.0.1"
+            echo "${prefix}_PORT=5432"
+            echo "${prefix}_DBNAME=postgres"
+            echo "${prefix}_USER=postgres"
+            echo "${prefix}_PASSWORD=postgres"
+          } >> "$GITHUB_ENV"
+
+      - name: expand the template
+        run: make gen
+
+      # 推导错了的后果是 PG 用例静默跳过而门禁全绿——「没跑过」和「全绿」长得一样，
+      # 正是这个仓库处处在防的那类失败。所以跟生成结果里的常量对字面量，错了就红
+      - name: the exported prefix must be the one the tests read
+        run: |
+          src="$HOME/.cache/axum-starter-template/$GEN_NAME/storage/tests/support/mod.rs"
+          grep -q "\"$PG_ENV_PREFIX\"" "$src" || {
+            echo "::error::导出的 $PG_ENV_PREFIX 与 $src 里的 PG_ENV_PREFIX 不一致，PG 用例会被静默跳过"
+            grep -n 'PG_ENV_PREFIX' "$src"
+            exit 1
+          }
+
+      - name: gate (fmt-portable + fmt-check + fmt-matrix + lint + test)
+        run: make check
+
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: rust toolchain
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+
+      # 不缓存 target/：verify 的价值之一就是从零编译。只缓存 registry，省下载不省编译
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: verify-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: verify-${{ runner.os }}-
+
+      - name: install cargo-generate
+        run: cargo install cargo-generate --version '^0.24' --locked
+
+      # 换一组名字（gt-project/gtx）走 cargo-generate 的 --test 展开再 build+test。
+      # 这里没有 PostgreSQL：verify 验的是展开路径而不是后端覆盖，PG 用例会跳过
+      - name: verify (cargo generate --test under a second name pair)
+        run: make verify
