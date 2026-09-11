@@ -1,0 +1,24 @@
+[package]
+name = "{{crate_prefix}}-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "持久化层：Storage 门面 + SQLite / PostgreSQL 双后端 + 迁移 + fail-fast 初始化"
+
+[dependencies]
+{{crate_prefix}}-core = { workspace = true }
+
+# StorageError → AppError::Storage(anyhow) 的升格载体
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+# StorageHealth 要进就绪探针的响应体
+serde = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+# 集成测试：直连原库核对表清单（绕开门面，避免用被测代码验证被测代码）
+sqlx = { workspace = true }
+tokio = { workspace = true }
