@@ -1,0 +1,13 @@
+[template]
+cargo_generate_version = "=0.24.0"
+# Only identities/docs are Liquid input. Rust and GitHub expressions are copied
+# byte-for-byte, eliminating name-dependent Rust formatting and reverse rewriting.
+include = ["Cargo.toml", "Cargo.lock", "*/Cargo.toml", "README.project.md"]
+ignore = ["docs", "scripts", "target", "tmp", ".claude", ".DS_Store", ".github", "Makefile", "README.md"]
+
+[placeholders]
+crate_prefix = { type = "string", prompt = "Crate package prefix (lowercase kebab-case, at most 32 characters)", regex = "^[a-z][a-z0-9]*(-[a-z0-9]+)*$" }
+
+[hooks]
+pre = ["hooks/pre.rhai"]
+post = ["hooks/post.rhai"]

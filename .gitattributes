@@ -1,0 +1,8 @@
+# Embedded migration checksums must not change with checkout platform.
+*.sql text eol=lf
+*.rs text eol=lf
+*.toml text eol=lf
+*.py text eol=lf
+*.rhai text eol=lf
+*.yml text eol=lf
+Makefile* text eol=lf

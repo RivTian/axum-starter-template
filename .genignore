@@ -1,0 +1,5 @@
+# cargo-generate's template.ignore uses literal paths; recursive patterns belong
+# here. Local bytecode/editor metadata must never be shipped in generated code.
+__pycache__/
+*.pyc
+.DS_Store

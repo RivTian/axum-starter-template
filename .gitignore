@@ -1,0 +1,33 @@
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Rust 构建产物
+/target/
+**/*.rs.bk
+
+# SQLite database files and their write-ahead-log/shared-memory sidecars.
+# Paths are project configuration, not an executable-relative installation rule.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Coverage / test artifacts
+coverage/
+*.lcov
+
+# Temporary files
+tmp/
+.temp/
+
+# 本地会话工具目录
+.claude/
+
+# Python maintenance/test caches
+__pycache__/

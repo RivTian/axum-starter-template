@@ -1,0 +1,30 @@
+name: project-check
+on: [push, pull_request]
+permissions:
+  contents: read
+concurrency:
+  group: project-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0, verified 2026-09-14
+      - name: Pinned toolchain and test prerequisites
+        run: |
+          python3 -c 'import sys; sys.exit("Python 3.11+ required") if sys.version_info < (3, 11) else None'
+          rustup show
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4, verified 2026-09-14
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: service-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+      - name: Workspace, release, logging and real-process contracts
+        run: make check

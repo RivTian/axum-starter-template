@@ -1,0 +1,35 @@
+name: template-check
+on: [push, pull_request]
+permissions:
+  contents: read
+concurrency:
+  group: template-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    # CI coverage is not a claim of completed platform certification.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0, verified 2026-09-14
+      - name: Tool prerequisites
+        run: |
+          python3 -c 'import sys; sys.exit("Python 3.11+ required") if sys.version_info < (3, 11) else None'
+          rustup show
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4, verified 2026-09-14
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/axum-starter-template/m1/cargo-target
+          key: template-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'cargo-generate.toml') }}
+      - name: Pinned generator
+        run: cargo install cargo-generate --version 0.24.0 --locked
+      - name: Working-tree generation, name matrix and complete project gates
+        run: make check
+      - name: Independent empty-target build and complete project gates
+        run: make verify

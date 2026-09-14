@@ -1,0 +1,43 @@
+# This is the generated project's Makefile, not the template maintenance driver.
+CARGO ?= cargo
+PYTHON ?= python3
+.DEFAULT_GOAL := help
+.PHONY: help preflight build fmt fmt-check lint test release-check logging-check service-check check
+
+help:
+	@echo 'Service: build / fmt / fmt-check / lint / test / release-check / logging-check / service-check / check'
+	@echo 'Run cargo run --locked; the actual listen address is printed after startup commits.'
+preflight:
+	@$(PYTHON) -c 'import sys; sys.exit("Python 3.11+ required; set PYTHON=/path/to/python3") if sys.version_info < (3, 11) else None'
+build:
+	$(CARGO) build --workspace --locked
+fmt:
+	$(CARGO) fmt --all
+fmt-check:
+	$(CARGO) fmt --all -- --check
+lint:
+	$(CARGO) clippy --workspace --all-targets --locked -- -D warnings
+test:
+	$(CARGO) test --workspace --locked
+release-check:
+	$(PYTHON) app/tests/check_release.py
+logging-check:
+	@set -e; for profile in debug release; do \
+	  $(PYTHON) app/tests/check_logging.py --profile $$profile; \
+	done
+service-check:
+	@set -e; for profile in debug release; do \
+	  for topology in main worker http shared split; do \
+	    $(PYTHON) app/tests/check_service.py --profile $$profile --topology $$topology; \
+	  done; \
+	done
+# One ordered recipe avoids concurrent commands mutating a generated workspace.
+check:
+	$(MAKE) preflight
+	$(MAKE) fmt-check
+	$(MAKE) lint
+	$(MAKE) test
+	$(MAKE) build
+	$(MAKE) release-check
+	$(MAKE) logging-check
+	$(MAKE) service-check
