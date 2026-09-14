@@ -87,7 +87,7 @@ fn aborting_the_outer_serve_task_does_not_reap_the_connection_task() {
         .unwrap();
     let extra = Builder::new_multi_thread()
         .worker_threads(1)
-        .thread_name("m1-http-extra")
+        .thread_name("test-http-extra")
         .enable_all()
         .build()
         .unwrap();

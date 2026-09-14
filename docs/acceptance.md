@@ -1,7 +1,7 @@
 # 完整模板验收证据索引
 
 本页按架构 §12 的 55 个 ID 列出自动化证据与限制，不用测试总数替代逐项对应。
-执行命令、最终报告、工具版本和平台范围见 [M5 验收记录](m5-verification.md)。
+执行命令、最终报告、工具版本和平台范围见 [当前验证记录](verification.md)。
 表中证据是组件测试、装配测试和真实进程测试的组合；不是对所有故障交错、任意业务扩展或所有操作系统的穷尽证明。
 
 ## 生命周期与 runtime
@@ -29,7 +29,7 @@
 | RT-04 | config runtime 名称/引用/预算测试；process `topology-fail-fast-before-construction` | 非法拓扑在线程/资源构建前拒绝 |
 | RT-05 | `rt/tests.rs::partial_build_failure_closes_constructed_runtimes_and_preserves_the_original_error` | 第 k 次失败后逆序关闭已建 runtime，保留创建错误 |
 | RT-06 | `rt/tests.rs::all_runtime_shutdowns_share_one_remaining_budget_not_n_full_timeouts`；`a_repeated_shutdown_cannot_refresh_the_original_cutoff` | 共享剩余等待预算，不线性叠加完整预算 |
-| RT-07 | `app/tests/check_release.py` + `app/examples/m1_release_panic.rs` | 实际 release/unwind 产物中的 task panic、兄弟收割、runtime teardown 与退出 1 |
+| RT-07 | `app/tests/check_release.py` + `app/tests/fixtures/release_panic.rs` | 实际 release/unwind 产物中的 task panic、兄弟收割、runtime teardown 与退出 1 |
 
 ## 配置与 ticker
 
@@ -72,7 +72,7 @@
 | ID | 可重复证据 | 结论 / 限制 |
 | --- | --- | --- |
 | GEN-01 | `make matrix` 的 short/long/hyphen/registry-collision；`check_service.py --identity-only` | 包名/固定别名/二进制名/环境前缀均实际消费；最大长度真实编译 |
-| GEN-02 | `structure` 的渲染白名单、Rust/CI 原样字节检查；`SyncSafetyTests` 的字面花括号/环境/GitHub 表达式用例 | 无反向全局替换，合法语法与 Liquid 输入分开 |
+| GEN-02 | `export_hygiene` 的阶段/设计引用拒绝与源文件对应检查；`structure` 渲染白名单；`ExportHygieneTests` / `SyncSafetyTests` | 无反向全局替换，合法语法与 Liquid 输入分开；使用者的合法名字不被当成模板历史，plain gen 同样执行审计 |
 | GEN-03 | `structure` metadata/path/normal/dev/build/registry SQLx 检查 | 五 crate 单向边，无外部 path 依赖/第二后端/subscriber 越层；撞词不误报 |
 | GEN-04 | 完整 gate 直接运行生成项目 `make check`；CI/Makefile byte equality；actionlint 静态校验 | 项目不依赖模板脚本，CI 分离。远端 runner 尚未触发，静态校验不是远端通过 |
 | GEN-05 | `make check` + `make verify` | 四种名字真实 fmt/clippy/test/build，第二身份空 target 完整 gate；依赖下载缓存可复用，不称离线/全空 Cargo home |
@@ -81,6 +81,6 @@
 
 ## 证据范围
 
-- 已验证环境及最终运行状态以 M5 报告为准；当前不把 Linux/Windows 或远端 CI 列为已验收平台。
+- 已验证环境及最终运行状态以当前验证记录为准；当前不把 Linux/Windows 或远端 CI 列为已验收平台。
 - 不包含任意业务 SQL 的迁移安全、网络文件系统卡死、不可中断 CPU/FFI 工作、断电恢复或生产负载 SLA。
 - 新增真实业务后，应替换空迁移/ticker 的示例断言，保留本页的所有权、失败可观测与有界清理原则。

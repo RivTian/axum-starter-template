@@ -1,4 +1,5 @@
-//! M1 proofs of Tokio primitives, not the completed M2 TaskSupervisor.
+//! Dependency semantics used by supervision: task ownership, cancellation and
+//! runtime teardown. These probes complement the TaskSupervisor contract tests.
 
 use std::io;
 use std::sync::{Arc, Condvar, Mutex};
@@ -20,7 +21,7 @@ fn a_joinset_on_main_owns_actual_tasks_spawned_on_another_runtime() {
         .unwrap();
     let extra = Builder::new_multi_thread()
         .worker_threads(1)
-        .thread_name("m1-compute")
+        .thread_name("test-compute")
         .enable_all()
         .build()
         .unwrap();
@@ -39,7 +40,7 @@ fn a_joinset_on_main_owns_actual_tasks_spawned_on_another_runtime() {
             .unwrap()
             .unwrap();
         assert_eq!(id, abort.id());
-        assert_eq!(thread, "m1-compute");
+        assert_eq!(thread, "test-compute");
         assert!(tasks.is_empty());
     });
     extra.shutdown_timeout(BUDGET);
@@ -50,7 +51,7 @@ fn a_joinset_on_main_owns_actual_tasks_spawned_on_another_runtime() {
 async fn task_errors_and_panics_are_distinct_and_keep_the_original_id() {
     let mut tasks: JoinSet<io::Result<()>> = JoinSet::new();
     let failed = tasks.spawn(async { Err(io::Error::other("task error")) });
-    let panicked = tasks.spawn(async { panic!("M1 controlled unit-test panic") });
+    let panicked = tasks.spawn(async { panic!("controlled unit-test panic") });
     let mut errors = 0;
     let mut panics = 0;
     for _ in 0..2 {

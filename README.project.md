@@ -114,7 +114,11 @@ make service-check
 
 系统 Python 低于 3.11 时，使用 `make check PYTHON=/absolute/path/to/python3` 指定满足要求的解释器。
 
-`release-check` 使用实际 TaskSupervisor 编译独立 release panic fixture；fixture 故意返回 1，由检查器确认其错误和清理结果。
+`release-check` 构建并运行 `app/tests/fixtures/release_panic.rs`。它复用实际 TaskSupervisor，检查 panic 被观察、兄弟任务完成收割和 runtime 关闭调用返回；夹具故意返回 1，由检查器判定是否符合预期。
+
+这是生成项目自己的回归测试，不是服务使用示例，因此不放在 `app/examples`。它仍随项目交付，CI 不需要回到模板仓库取测试代码。
+Cargo 中保留名为 `release-panic-fixture` 的 `[[example]]` 编译目标，是为了使用 `cargo build --release` 的真实 panic 策略：普通 test harness 会忽略 profile 中的 panic 设置，不能用 `cargo test --release` 替代这一证明。
+目标设置了 `test = false`、`bench = false`，不由普通测试 harness 执行；`cargo run --locked` 仍只启动服务。
 `logging-check` 在 debug/release 的实际进程中验证 PTY 自动彩色、`NO_COLOR`（含空值）、`TERM=dumb`、管道和文件纯文本，且逐例检查正常启动/关停字段。
 `service-check` 在 debug/release × 五种布局的实际服务进程中验证端点、信号、启动失败、配置路径/优先级和独立实例。
 故障注入只存在于测试/example，生产主程序没有 panic 开关、测试路由或管理后门。

@@ -33,7 +33,16 @@ EDGES = {"app": {"api", "worker", "storage", "core"}, "api": {"core", "storage"}
 MARKER = ".axum-template-owned.json"
 CARGO = os.environ.get("CARGO", "cargo")
 PINNED_GENERATOR = "0.24.0"
+DEFAULT_GEN_ROOT = Path.home() / ".cache/axum-starter-template/workspaces"
+MANAGED_PREFIX = "gen-"
+# Old directories remain explicitly cleanable with their original --gen-root.
+# This is a compatibility identifier, never a name used for new output.
+LEGACY_MANAGED_PREFIX = "m1-"
 NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
+HISTORY_MARKER = re.compile(r"(?<![a-z0-9])m\d+(?![a-z0-9])", re.IGNORECASE)
+UNSHIPPED_DESIGN_REFERENCE = re.compile(
+    r"\b(?:docs/)?(?:architecture|acceptance|m\d+-verification)\.md\b|§\s*\d", re.IGNORECASE
+)
 NAME_MATRIX = (
     ("short", "a", "x"),
     ("long", "long-" + "n" * 59, "p" * 32),
@@ -58,6 +67,43 @@ def rust_sources() -> list[Path]:
                     f"source must be a regular workspace file: {path}")
             result.append(path)
     return result
+
+
+def export_hygiene(project: Path) -> int:
+    """Audit the shipped scaffold, not the repository's historical evidence.
+
+    Rendered files are checked at their authored source: a user may legitimately
+    choose a project identity such as m1-service. All other files must be exact
+    copies, so a hook cannot inject history after the source-side inspection.
+    """
+    require(not (project / "app/examples").exists(), "release probes belong in tests/fixtures, not app/examples")
+    checked = 0
+    for target in sorted(project.rglob("*")):
+        relative = target.relative_to(project)
+        if "target" in relative.parts or ".git" in relative.parts or not target.is_file():
+            continue
+        require(not target.is_symlink(), f"exported file must not be a symlink: {relative}")
+        if relative == Path("Makefile"):
+            source = ROOT / "Makefile.project"
+        elif relative == Path("README.md"):
+            source = ROOT / "README.project.md"
+        elif relative.parts[0] == ".github":
+            source = ROOT / "project-ci" / Path(*relative.parts[1:])
+        else:
+            source = ROOT / relative
+        require(source.is_file() and not source.is_symlink(), f"exported file lacks an authored source: {relative}")
+        require(not HISTORY_MARKER.search(str(relative)), f"milestone-derived export path: {relative}")
+        # A dependency lock is resolution metadata, not authored commentary.
+        if relative == Path("Cargo.lock"):
+            continue
+        for number, line in enumerate(source.read_text().splitlines(), 1):
+            require(not HISTORY_MARKER.search(line), f"milestone history in export source: {source}:{number}")
+            require(not UNSHIPPED_DESIGN_REFERENCE.search(line), f"unshipped design reference: {source}:{number}")
+        rendered = relative.name == "Cargo.toml" or relative == Path("README.md")
+        if not rendered:
+            require(target.read_bytes() == source.read_bytes(), f"exported copy differs from source: {relative}")
+        checked += 1
+    return checked
 
 
 def run(command: list[str], cwd: Path, env: dict[str, str] | None = None,
@@ -104,7 +150,7 @@ def generate(base: Path, name: str, prefix: str) -> Path:
     version = run([CARGO, "generate", "--version"], ROOT, capture=True, timeout=30)
     if version.split()[-1] != PINNED_GENERATOR:
         raise RuntimeError(f"install cargo-generate {PINNED_GENERATOR}; found {version.strip()}")
-    parent = Path(tempfile.mkdtemp(prefix=f"m1-{name}-", dir=base))
+    parent = Path(tempfile.mkdtemp(prefix=f"{MANAGED_PREFIX}{name}-", dir=base))
     marker = {"template": str(ROOT), "project": name, "prefix": prefix}
     (parent / MARKER).write_text(json.dumps(marker, indent=2) + "\n")
     project = parent / name
@@ -113,6 +159,7 @@ def generate(base: Path, name: str, prefix: str) -> Path:
          "--name", name, "--define", f"crate_prefix={prefix}", "--vcs", "none", "--silent", "--no-workspace"], ROOT)
     if not project.is_dir():
         raise RuntimeError(f"generator did not create {project}")
+    export_hygiene(project)
     print(f"GENERATED_PROJECT={project}", flush=True)
     return project
 
@@ -130,7 +177,7 @@ def clean(project: Path, base: Path) -> None:
         raise ValueError("refusing to clean through a symlink")
     project = project.resolve()
     parent = project.parent
-    if parent.parent != base or not parent.name.startswith("m1-"):
+    if parent.parent != base or not parent.name.startswith((MANAGED_PREFIX, LEGACY_MANAGED_PREFIX)):
         raise ValueError("refusing to clean an unmanaged directory")
     marker = parent / MARKER
     if not project.is_dir() or marker.is_symlink():
@@ -230,6 +277,7 @@ def normalize_lock(text: str, prefix: str) -> str:
 
 
 def structure(project: Path, name: str, prefix: str, env: dict[str, str]) -> dict:
+    checked_exports = export_hygiene(project)
     meta = json.loads(run([CARGO, "metadata", "--locked", "--format-version", "1"], project, env, True))
     packages = {p["id"]: p for p in meta["packages"]}
     members = [packages[key] for key in meta["workspace_members"]]
@@ -258,6 +306,11 @@ def structure(project: Path, name: str, prefix: str, env: dict[str, str]) -> dic
         require(normal == EDGES[source], f"production dependency edges changed: {source}: {normal}")
     app = next(p for p in members if names[p["name"]] == "app")
     require(any(t["name"] == name.replace("-", "_") and "bin" in t["kind"] for t in app["targets"]), "incorrect application binary identity")
+    require(sum("bin" in target["kind"] for target in app["targets"]) == 1, "only one service executable is expected")
+    fixtures = [target for target in app["targets"] if "example" in target["kind"]]
+    require(len(fixtures) == 1 and fixtures[0]["name"] == "release-panic-fixture"
+            and Path(fixtures[0]["src_path"]) == project / "app/tests/fixtures/release_panic.rs"
+            and not fixtures[0]["test"], "release fixture must use a standalone target under tests/fixtures")
     active = {node["id"]: node for node in meta["resolve"]["nodes"]}
     # metadata/Cargo.lock can include optional dependencies that are not compiled.
     # Check the selected workspace build/test graph, not that resolution superset.
@@ -293,7 +346,8 @@ def structure(project: Path, name: str, prefix: str, env: dict[str, str]) -> dic
     require("*.sql text eol=lf" in attributes, "migration LF rule is missing")
     for source in rust_sources():
         require(not re.search(r"\b(?:edge_core|edge_storage|prism_store|starriver|sansitech)\b", source.read_text()), f"legacy production identity: {source}")
-    return {"workspace_packages": sorted(names), "dependency_edges": sorted(dependency_edges), "sqlx_features": sorted(features)}
+    return {"workspace_packages": sorted(names), "dependency_edges": sorted(dependency_edges),
+            "sqlx_features": sorted(features), "history_free_exports": checked_exports}
 
 
 
@@ -303,7 +357,7 @@ def migration_rebuild(project: Path, prefix: str, env: dict[str, str]) -> list[s
     require(marker["template"] == str(ROOT) and marker["project"] == project.name,
             "migration rebuild probe requires a managed scratch project")
     manifest = project / "storage/Cargo.toml"
-    probe = project / "storage/migrations/0001_m5_rebuild_probe.sql"
+    probe = project / "storage/migrations/0001_embedded_migration_probe.sql"
     require(not probe.exists(), "refusing to overwrite a migration")
 
     def fresh() -> bool:
@@ -336,20 +390,20 @@ def migration_rebuild(project: Path, prefix: str, env: dict[str, str]) -> list[s
 
     results = []
     created = False
-    with tempfile.TemporaryDirectory(prefix="m5-migration-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="migration-probe-") as temporary:
         data = Path(temporary)
         try:
             baseline()
             with probe.open("x") as handle:
                 created = True
-                handle.write("CREATE TABLE m5_rebuild_probe (id INTEGER); INSERT INTO m5_rebuild_probe VALUES (1);\n")
+                handle.write("CREATE TABLE embedded_migration_probe (id INTEGER); INSERT INTO embedded_migration_probe VALUES (1);\n")
             require(not fresh(), "adding a migration failed to trigger recompilation")
             binary = executable()
             process(binary, data / "applied", "applied")
             process(binary, data / "applied", "applied")
             results.extend(["add-embedded", "restart-does-not-reapply"])
             baseline()
-            probe.write_text("CREATE TABLE m5_rebuild_probe (id INTEGER); INVALID_SQL;\n")
+            probe.write_text("CREATE TABLE embedded_migration_probe (id INTEGER); INVALID_SQL;\n")
             require(not fresh(), "modifying a migration failed to trigger recompilation")
             binary = executable()
             process(binary, data / "applied", "rejected")  # checksum mismatch
@@ -412,10 +466,10 @@ def check(project: Path, name: str, prefix: str, env: dict[str, str]) -> None:
                     "generator": PINNED_GENERATOR, "clean_target": env["CARGO_TARGET_DIR"] == str(project / "target"),
                     "lock_sha256": hashlib.sha256((project / "Cargo.lock").read_bytes()).hexdigest(),
                     "template_lock_sha256": hashlib.sha256((ROOT / "Cargo.lock").read_bytes()).hexdigest(),
-                    "result": "M5 local gates passed; remote CI and other platforms are not implied"})
-    report = project.parent / "m5-result.json"
+                    "result": "passed", "scope": "local", "remote_ci": "not_run"})
+    report = project.parent / "verification.json"
     report.write_text(json.dumps(details, indent=2) + "\n")
-    print(f"M5_REPORT={report}")
+    print(f"VERIFICATION_REPORT={report}")
 
 
 def matrix(base: Path) -> None:
@@ -432,6 +486,10 @@ def matrix(base: Path) -> None:
     require(projects[0] != projects[1], "parallel generators shared a source directory")
     for project in projects:
         structure(project, "parallel-probe", "parx", environment(base, project))
+    # Project identities are user input, not authored migration history. Prove
+    # that the export audit does not reserve otherwise valid names for itself.
+    identity_project = generate(base, "m1-service", "m2")
+    structure(identity_project, "m1-service", "m2", environment(base, identity_project))
     sentinel = projects[0] / "user-change.txt"
     sentinel.write_text("do not overwrite an earlier generated project\n")
     clean(projects[1], base)
@@ -461,10 +519,11 @@ def matrix(base: Path) -> None:
                 require("command failed" in str(error), "invalid generator input hung instead of rejecting")
             else:
                 raise RuntimeError(f"direct generator accepted invalid identity: {name}/{prefix}")
-    report = projects[0].parent / "m5-matrix.json"
-    report.write_text(json.dumps({"names": results, "parallel_generation": "passed", "parent_workspace_unchanged": "passed", "direct_invalid_names": "passed",
+    report = projects[0].parent / "matrix.json"
+    report.write_text(json.dumps({"names": results, "parallel_generation": "passed", "user_identity_not_filtered": "passed",
+                                 "parent_workspace_unchanged": "passed", "direct_invalid_names": "passed",
                                  "platform": platform.platform(), "result": "passed"}, indent=2) + "\n")
-    print(f"M5_MATRIX_REPORT={report}")
+    print(f"MATRIX_REPORT={report}")
 
 
 def main() -> None:
@@ -472,7 +531,7 @@ def main() -> None:
     parser.add_argument("action", choices=["gen", "check", "verify", "matrix", "fmt", "lock", "clean"])
     parser.add_argument("--name", default="example-service")
     parser.add_argument("--prefix", default="example")
-    parser.add_argument("--gen-root", default=str(Path.home() / ".cache/axum-starter-template/m1"))
+    parser.add_argument("--gen-root", default=str(DEFAULT_GEN_ROOT))
     parser.add_argument("--directory", type=Path)
     args = parser.parse_args()
     base = workspace_base(args.gen_root)

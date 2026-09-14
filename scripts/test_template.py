@@ -1,8 +1,10 @@
 import json
+from contextlib import contextmanager
 from pathlib import Path
 import tempfile
 import tomllib
 import unittest
+from unittest.mock import patch
 
 import template
 
@@ -64,14 +66,14 @@ class DirectorySafetyTests(unittest.TestCase):
 
     def test_unmanaged_clean_does_not_delete_files(self):
         with tempfile.TemporaryDirectory() as temp:
-            base=Path(temp).resolve(); project=base/"m1-not-owned"/"project"
+            base=Path(temp).resolve(); project=base/"gen-not-owned"/"project"
             project.mkdir(parents=True); sentinel=project/"keep"; sentinel.write_text("user data")
             with self.assertRaises(OSError): template.clean(project,base)
             self.assertEqual(sentinel.read_text(),"user data")
 
     def test_managed_clean_only_removes_its_own_parent(self):
         with tempfile.TemporaryDirectory() as temp:
-            base=Path(temp).resolve(); parent=base/"m1-owned"; project=parent/"project"
+            base=Path(temp).resolve(); parent=base/"gen-owned"; project=parent/"project"
             project.mkdir(parents=True); sibling=base/"keep"; sibling.write_text("keep")
             (parent/template.MARKER).write_text(json.dumps({"template":str(template.ROOT),"project":"project"}))
             template.clean(project,base)
@@ -79,7 +81,7 @@ class DirectorySafetyTests(unittest.TestCase):
 
     def test_mismatched_owner_is_not_deleted(self):
         with tempfile.TemporaryDirectory() as temp:
-            base=Path(temp).resolve(); parent=base/"m1-other"; project=parent/"project"
+            base=Path(temp).resolve(); parent=base/"gen-other"; project=parent/"project"
             project.mkdir(parents=True)
             (parent/template.MARKER).write_text(json.dumps({"template":"/unrelated","project":"project"}))
             with self.assertRaises(ValueError): template.clean(project,base)
@@ -88,7 +90,7 @@ class DirectorySafetyTests(unittest.TestCase):
     def test_symlink_clean_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             base=Path(temp).resolve(); victim=base/"victim"; victim.mkdir()
-            link=base/"m1-link"; link.symlink_to(victim,target_is_directory=True)
+            link=base/"gen-link"; link.symlink_to(victim,target_is_directory=True)
             with self.assertRaises(ValueError): template.clean(link/"project",base)
             self.assertTrue(victim.exists())
 
@@ -175,7 +177,7 @@ class ProductizationTests(unittest.TestCase):
 
     def test_marker_symlink_cannot_authorize_deletion(self):
         with tempfile.TemporaryDirectory() as temporary:
-            base = Path(temporary).resolve(); parent = base / "m1-probe"
+            base = Path(temporary).resolve(); parent = base / "gen-probe"
             project = parent / "project"; project.mkdir(parents=True)
             marker = base / "external-marker"
             marker.write_text(json.dumps({"template": str(template.ROOT), "project": "project"}))
@@ -188,6 +190,76 @@ class ProductizationTests(unittest.TestCase):
         import sys
         with self.assertRaisesRegex(RuntimeError, "exceeded"):
             template.run([sys.executable, "-c", "import time; time.sleep(60)"], template.ROOT, timeout=0.1)
+
+    def test_legacy_managed_directory_still_requires_explicit_matching_root(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary).resolve()
+            parent = base / (template.LEGACY_MANAGED_PREFIX + "owned")
+            project = parent / "project"
+            project.mkdir(parents=True)
+            (parent / template.MARKER).write_text(json.dumps({"template": str(template.ROOT), "project": "project"}))
+            with self.assertRaises(ValueError):
+                template.clean(project, base / "different-root")
+            self.assertTrue(project.is_dir())
+            template.clean(project, base)
+            self.assertFalse(parent.exists())
+
+
+class ExportHygieneTests(unittest.TestCase):
+    @contextmanager
+    def scaffold(self, sources: dict[str, str], generated: dict[str, str]):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "template"
+            project = Path(temporary) / "generated"
+            for base, files in ((root, sources), (project, generated)):
+                base.mkdir()
+                for name, content in files.items():
+                    path = base / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(content)
+            with patch.object(template, "ROOT", root):
+                yield project
+
+    def test_milestone_comment_is_rejected(self):
+        files = {"api/src/lib.rs": "// see retained M1 tests\n"}
+        with self.scaffold(files, files) as project:
+            with self.assertRaisesRegex(RuntimeError, "milestone history"):
+                template.export_hygiene(project)
+
+    def test_milestone_filename_is_rejected(self):
+        files = {"app/tests/m3_probe.rs": "// a fixture\n"}
+        with self.scaffold(files, files) as project:
+            with self.assertRaisesRegex(RuntimeError, "milestone-derived export path"):
+                template.export_hygiene(project)
+
+    def test_unshipped_design_references_are_rejected(self):
+        for comment in ("// explained in architecture §6", "//! See docs/architecture.md"):
+            files = {"api/src/lib.rs": comment}
+            with self.subTest(comment=comment), self.scaffold(files, files) as project:
+                with self.assertRaisesRegex(RuntimeError, "unshipped design reference"):
+                    template.export_hygiene(project)
+
+    def test_rendered_user_identity_is_not_confused_with_authored_history(self):
+        source = {"README.project.md": "# {{project-name}}\n",
+                  "app/Cargo.toml": '[package]\nname = "{{crate_prefix}}-app"\n',
+                  "app/src/main.rs": '// startup phase precedes Running\nfn main() {}\n'}
+        generated = {"README.md": "# m1-service\n", "app/Cargo.toml": '[package]\nname = "m2-app"\n',
+                     "app/src/main.rs": source["app/src/main.rs"]}
+        with self.scaffold(source, generated) as project:
+            self.assertEqual(template.export_hygiene(project), 3)
+
+    def test_post_render_mutation_of_copied_code_is_rejected(self):
+        source = {"app/src/main.rs": "fn main() {}\n"}
+        generated = {"app/src/main.rs": "// unexpected injected commentary\nfn main() {}\n"}
+        with self.scaffold(source, generated) as project:
+            with self.assertRaisesRegex(RuntimeError, "exported copy differs"):
+                template.export_hygiene(project)
+
+    def test_release_fixture_cannot_return_to_the_examples_directory(self):
+        with self.scaffold({}, {}) as project:
+            (project / "app/examples").mkdir(parents=True)
+            with self.assertRaisesRegex(RuntimeError, "tests/fixtures"):
+                template.export_hygiene(project)
 
 
 if __name__ == "__main__":

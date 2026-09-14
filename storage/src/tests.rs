@@ -10,7 +10,7 @@ const TEST_BUDGET: Duration = Duration::from_secs(5);
 #[tokio::test]
 async fn empty_migrations_bootstrap_only_sqlx_metadata_and_can_restart() {
     timeout(TEST_BUDGET, async {
-        assert_eq!(MIGRATOR.iter().count(), 0, "no business migrations in M1");
+        assert_eq!(MIGRATOR.iter().count(), 0, "no business migrations in the starter");
         let dir = tempfile::tempdir().unwrap();
         let config = config(dir.path().join("service.sqlite3"));
         for _ in 0..2 {

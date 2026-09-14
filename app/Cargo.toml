@@ -30,6 +30,10 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["net", "io-util"] }
 tempfile.workspace = true
 
+# A test fixture built with the real release profile, not the test harness.
+# release-check runs it and validates its intentional failure exit; normal service startup does not.
 [[example]]
-name = "m1-release-panic"
-path = "examples/m1_release_panic.rs"
+name = "release-panic-fixture"
+path = "tests/fixtures/release_panic.rs"
+test = false
+bench = false

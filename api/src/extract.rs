@@ -1,5 +1,6 @@
-//! The only prelaid module: adding the first DTO must not silently bypass the
-//! existing JSON error envelope. Do not re-export axum's raw extractors elsewhere.
+//! Local input extractors preserve the API's JSON rejection envelope without
+//! echoing submitted values. Routes accepting input should use these wrappers
+//! instead of re-exporting the framework's raw extractors.
 
 use crate::error::HttpError;
 use axum::extract::{FromRequest, FromRequestParts, Request};

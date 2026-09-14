@@ -1,10 +1,11 @@
-//! Retained release fixture, now exercising the actual M2 TaskSupervisor rather
-//! than a separate JoinSet implementation. No production panic injection switch.
+//! Standalone release regression fixture for the actual TaskSupervisor.
+//! The checker expects panic observation, sibling cleanup and a failure exit;
+//! this executable is not a service example or a production panic switch.
 
 #[cfg(not(panic = "unwind"))]
 compile_error!("the release panic probe requires panic=unwind");
 
-#[path = "../src/supervisor.rs"]
+#[path = "../../src/supervisor.rs"]
 mod supervisor;
 
 use service_core::TickerInterval;
@@ -55,7 +56,7 @@ async fn probe(extra: &Handle) {
     assert!(tasks.try_next_exit().is_none());
     tasks
         .spawn_on("panic", extra, "compute", async {
-            panic!("M1 controlled release task panic")
+            panic!("controlled release task panic")
         })
         .unwrap();
     let exited = timeout(BUDGET, tasks.next_exit()).await.unwrap().unwrap();
@@ -67,7 +68,7 @@ async fn probe(extra: &Handle) {
         ExitKind::Failed(error) => panic!("unexpected task error: {error}"),
         other => panic!("unexpected exit: {other:?}"),
     }
-    println!("M1:panic-observed");
+    println!("release-probe:panic-observed");
     tasks.close_registration();
     root.cancel();
     let worker = match timeout(BUDGET, tasks.next_exit()).await {
@@ -84,7 +85,7 @@ async fn probe(extra: &Handle) {
     assert!(dropped.load(Ordering::SeqCst));
     assert!(tasks.is_empty());
     assert!(tasks.pending_names().is_empty());
-    println!("M1:worker-joined");
+    println!("release-probe:worker-joined");
 }
 
 fn main() -> ExitCode {
@@ -101,6 +102,6 @@ fn main() -> ExitCode {
     main.block_on(probe(extra.handle()));
     extra.shutdown_timeout(BUDGET);
     main.shutdown_timeout(BUDGET);
-    println!("M1:runtime-teardown-returned");
+    println!("release-probe:runtime-teardown-returned");
     ExitCode::FAILURE
 }

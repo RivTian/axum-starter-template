@@ -28,12 +28,12 @@ def main() -> None:
             service.stop()
     if args.expect != "rejected":
         with sqlite3.connect(args.directory / "data/service.sqlite3") as database:
-            exists = database.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='m5_rebuild_probe'").fetchone()[0]
+            exists = database.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='embedded_migration_probe'").fetchone()[0]
             require(exists == int(args.expect == "applied"), "binary embedded the wrong migration set")
             versions = database.execute("SELECT COUNT(*) FROM _sqlx_migrations").fetchone()[0]
             require(versions == exists, "unexpected migration version set")
             if exists:
-                require(database.execute("SELECT COUNT(*) FROM m5_rebuild_probe").fetchone()[0] == 1,
+                require(database.execute("SELECT COUNT(*) FROM embedded_migration_probe").fetchone()[0] == 1,
                         "a successful version was applied more than once")
     print(f"embedded migration process: {args.expect}")
 

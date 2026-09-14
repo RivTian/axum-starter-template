@@ -1,6 +1,6 @@
 # 架构设计：多 crate 分层 + 受监督任务面
 
-- **版本**：v0.7，M5 产品化实现已落地；macOS arm64 本地最终验收已通过，远端 CI 与其他平台另记。
+- **版本**：v0.8，生成物与维护历史解耦；当前回归状态见 `docs/verification.md`，阶段记录保留为历史证据。
 - **日期**：2026-09-14。
 - **决策状态**：用户于 2026-09-14 接受 §14.3 的全部四项 P0；后续按本文实施，不再作为待选方案重复确认。
 - **范围**：本文定义完整模板的目标契约，实际实现进度见 §13。M5 已补齐名称/依赖矩阵、生成项目门禁、真实迁移失败与协议边界探针、文档和 CI 定义。55 项证据映射见 `docs/acceptance.md`；本地运行与远端/其他平台的验收状态分别记录，不把 workflow 文件存在当成平台通过。
@@ -235,10 +235,11 @@ axum-starter-template/
 │   ├── Cargo.toml / README.md
 │   ├── src/
 │   │   ├── main.rs                    # 同步入口，持有 RuntimeSet
-│   │   ├── cli.rs                     # 参数、配置路径选择
+│   │   ├── cli.rs                     # 命令行参数解析
 │   │   ├── config/                    # 解析、校验、重载分别有真实职责
 │   │   │   ├── mod.rs                 # RawConfig / BootConfig / Candidate
-│   │   │   ├── load.rs                # 三段式加载
+│   │   │   ├── load.rs                # 默认路径、来源选择与三段式加载
+│   │   │   ├── runtime.rs             # 冷拓扑、名字/引用/预算校验
 │   │   │   └── reload.rs              # 单飞加载、冷热比较、唯一提交点
 │   │   ├── boot.rs                    # 启动资源所有者与启动提交
 │   │   ├── supervisor.rs              # app 私有，直接持有实际任务
@@ -247,26 +248,26 @@ axum-starter-template/
 │   │   ├── rt.rs                      # 可选 runtime 拓扑及同步销毁
 │   │   └── telemetry.rs               # 唯一 tracing 初始化
 │   └── tests/                         # 进程级生命周期验收
+│       └── fixtures/release_panic.rs   # 独立 release 回归夹具，不是服务使用示例
 ├── core/
 │   ├── Cargo.toml / README.md
-│   └── src/{lib.rs,config.rs,lifecycle.rs,build_info.rs}
+│   └── src/{lib.rs,config.rs,lifecycle.rs}
 ├── storage/
 │   ├── Cargo.toml / README.md / build.rs
 │   ├── migrations/README.md           # 起始无业务 .sql 文件
-│   ├── src/{lib.rs,sqlite.rs,error.rs}
-│   └── tests/                         # 真 SQLite；迁移用测试专属 fixture
+│   └── src/{lib.rs,tests.rs,migration_tests.rs} # 真 SQLite 与测试专属迁移 fixture
 ├── worker/
 │   ├── Cargo.toml / README.md
-│   └── src/{lib.rs,ticker.rs}
+│   └── src/lib.rs
 ├── api/
 │   ├── Cargo.toml / README.md
 │   ├── src/{lib.rs,state.rs,error.rs,response.rs,extract.rs}
 │   ├── src/handler/{mod.rs,system.rs}
-│   └── tests/                         # Router 黑盒契约
+│   └── src/{contract_tests.rs,tests.rs} # Router 黑盒契约与真实连接测试
 ├── hooks/{pre.rhai,post.rhai}
 ├── scripts/                           # 仅模板维护的生成/格式/结构验收脚本
 ├── .github/workflows/ci.yml            # 模板自己的 CI
-└── docs/architecture.md
+└── docs/{architecture.md,acceptance.md,verification.md} # 仅供模板维护
 ```
 
 不建 `reconcile`，也不预建 `testkit`。共享测试 crate 只有在两个以上 crate 确实重复同一资源夹具、
@@ -1094,6 +1095,10 @@ SQLx 或 panic 的原始文字可能包含敏感数据，内部日志也不是�
 - 模板自己的 CI 不原样复制：M1 使用 `project-ci/workflows/ci.yml` 为源，post hook 将整个 `project-ci` 目录移为 `.github`，无需 hook 创建中间目录；
   Liquid 仅处理 manifest/锁文件和项目 README 白名单，Rust 与项目 CI 原样复制；生成门禁按字节验证没有放错 workflow。
 - 模板调研文档、生成/回写脚本、hooks 和 `.project` 中间文件不留在生成项目。
+- 生成物不能要求使用者了解实施阶段或未随项目交付的设计章节。源码注释解释当前约束、原因和失败边界；文件/线程/日志/夹具按用途命名。
+- `make gen` 和结构门禁都会执行输出审计；非渲染文件与源按字节对应，渲染文件审查原始模板，避免把用户合法的项目身份误判为历史标签。
+- release panic 验证随生成项目保留在 `app/tests/fixtures/release_panic.rs`。Cargo 的 `[[example]]` 目标仅提供独立 release 编译入口（`test = false`、`bench = false`）；不放 `app/examples`，也不把它描述为服务使用示例。
+- 默认缓存根、受管目录前缀和报告字段采用用途命名；旧受管目录只有在显式指定原生成根且所有权匹配时才可清理，不自动搬迁或覆盖。
 - README 必须给“生成 → 运行门禁 → 启动 → 根据日志的实际地址访问三个端点 → Ctrl-C”最短闭环；
   ticker 删除方法、第一条迁移、可选 runtime 绑定和热重载失败语义分别有短说明。
 
@@ -1138,7 +1143,7 @@ M5 维护入口显式使用 `--no-workspace`，防止生成到另一 workspace �
 
 ## 12. 测试策略与验收矩阵
 
-**下表是完整模板的验收要求，证据与范围逐项见 `docs/acceptance.md`。** M1–M4 历史记录保留；M5 新增生成矩阵、迁移 fixture/真实嵌入集合、慢连接和 handler panic 证据，执行结果见 `docs/m5-verification.md`。跨平台、任意业务迁移/负载不因本地门禁通过而自动验收。
+**下表是完整模板的验收要求，证据与范围逐项见 `docs/acceptance.md`。** M1–M4 历史记录保留；M5 新增生成矩阵、迁移 fixture/真实嵌入集合、慢连接和 handler panic 证据，当前执行结果见 `docs/verification.md`，阶段原始结果见对应历史报告。跨平台、任意业务迁移/负载不因本地门禁通过而自动验收。
 每个行为至少有一个可重复的失败注入用例；所有预期超时都设置外层进程 watchdog，避免测试套件本身挂死。
 
 ### 12.1 分层方法
@@ -1242,7 +1247,7 @@ M5 维护入口显式使用 `--no-workspace`，防止生成到另一 workspace �
 ## 13. 分阶段实施计划
 
 M0–M4 已于 2026-09-14 完成本阶段实现与本地验收。M5 产品化实现已落地，macOS arm64 本地最终验收已通过。
-M1–M4 历史记录保留；M5 证据和首次平台范围见 `docs/m5-verification.md`。
+M1–M5 历史记录保留；维护阶段完成后，持续回归与平台范围统一记录在 `docs/verification.md`。
 远端 CI 尚未触发，不能将本地通过等同于所有 runner/平台已通过或模板已发布。
 
 | 阶段 | 目标、任务与交付 | 验收 / 主要风险 |
@@ -1412,7 +1417,7 @@ R11 https://docs.rs/tokio/latest/tokio/time/enum.MissedTickBehavior.html
 ### 15.3 本次交付边界
 
 截至 v0.7，M0–M5 已实现，M5 本地产品化门禁通过。默认单 runtime 和可选 extra 绑定均保留；同一监督器管理实际任务，正常路径先关池、逆序关 extra、最后关主 runtime，所有 runtime 沿用同一剩余期限。
-当前证据见 `docs/m5-verification.md` 与 `docs/acceptance.md`，此前报告保留历史语境；生产迁移目录仍无业务 SQL，`edge_dev` 未修改，备份未整体恢复，未创建 git 提交或推送。
+当前证据见 `docs/verification.md` 与 `docs/acceptance.md`，此前报告保留历史语境；生产迁移目录仍无业务 SQL，`edge_dev` 未修改，备份未整体恢复。
 仅 ticker.interval_ms 可热改，runtime/绑定仍为冷配置。M5 产品化与本地验收状态见专门报告；远端 CI、Linux/Windows、任意业务迁移和生产 SLA 不被本地结果自动覆盖。
 若新证据要求改变已确认 P0，应提出具体变更并同步设计和验收项，不得静默扩大承诺。
 
@@ -1427,3 +1432,4 @@ R11 https://docs.rs/tokio/latest/tokio/time/enum.MissedTickBehavior.html
 | 2026-09-14 | v0.5 | 完成 M3：冷热类型拆分、单飞加载、原子 watch 快照、ticker 周期重建和共享期限收割；验证超时占槽/合并/迟到结果/panic/关停竞态；M4/M5 未实施 |
 | 2026-09-14 | v0.6 | 完成 M4：可选冷拓扑/绑定、同步 RuntimeSet 所有权、实际 runtime 任务标签、部分构建失败清理及统一关闭期限；验证五布局×双 profile，并修复本地 Python 缓存的生成过滤；M5 未实施 |
 | 2026-09-14 | v0.7 | M5 产品化：名称/格式/依赖与并行生成矩阵、父 workspace 保护、生成项目真实 gates、CI 缓存/版本固定、迁移与协议负向证据、配置来源和 55 项映射；最终本地结果与未验平台分别记录在 M5 报告 |
+| 2026-09-14 | v0.8 | 生成物去除实施阶段与未交付设计引用；独立 release 探针归入 tests/fixtures，保留真实 profile 回归；新增 plain gen 输出审计、用途化缓存/报告与旧目录显式清理兼容，持续结果改记 verification.md |

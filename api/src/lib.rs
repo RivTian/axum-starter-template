@@ -1,8 +1,9 @@
 //! System HTTP API. The caller owns spawning, startup commit and joining.
 
 mod error;
-// The sole prelaid exception, explained in architecture §6. Keep the allowance
-// here, not on the crate, and exercise all three wrappers in contract tests.
+// System routes take no JSON, Path or Query input. Keep these local wrappers
+// so added routes can preserve the same rejection envelope without exposing
+// submitted values. Allow dead code only here; contract tests cover all wrappers.
 #[allow(dead_code)]
 mod extract;
 mod handler;
@@ -99,7 +100,7 @@ pub async fn run(
 }
 
 // Normal completion means graceful drain. Aborting this future is not proof
-// that axum's library-owned connections were joined (see retained M1 tests).
+// that axum's library-owned connections were joined; they may still own handlers.
 async fn serve(
     listener: TcpListener,
     router: Router,

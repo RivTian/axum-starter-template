@@ -1,4 +1,4 @@
-// Adapted from backup 1ac7584; keep identity derivation, not old runtime code.
+// Validate final project identities before rendering and derive the environment prefix.
 fn valid_identity(value, max_len) {
     if value.len() == 0 || value.len() > max_len {
         return false;

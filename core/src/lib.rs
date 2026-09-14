@@ -13,8 +13,9 @@ pub struct BuildInfo {
     pub version: &'static str,
 }
 
-/// A period accepted by Tokio's interval constructor, with zero rejected early.
-/// Full configuration loading and its resource limits are introduced in M2/M3.
+/// A nonzero ticker period: Tokio rejects zero-length intervals.
+/// Application-specific range limits belong in the configuration loader; the
+/// timer owner must also check that its next deadline is representable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TickerInterval(Duration);
 

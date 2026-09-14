@@ -233,7 +233,7 @@ def verify(binary: Path, version: str, topology: str) -> list[str]:
     cases = []
     def launch(directory: Path, **kwargs: object) -> Service:
         return Service(binary, directory, topology=topology, **kwargs)
-    with tempfile.TemporaryDirectory(prefix="service-m4-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="service-check-") as temporary:
         root = Path(temporary)
         with launch(root / "normal") as service:
             service.started()

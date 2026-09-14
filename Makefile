@@ -1,9 +1,9 @@
-# Adapted workflow from backup 1ac7584. Each invocation gets an isolated source
-# directory outside this repository; no overwrite and no global source pointer.
+# Each invocation gets an isolated source directory outside this repository.
+# Never overwrite an existing project or rely on a global source pointer.
 PYTHON ?= python3
 GEN_NAME ?= example-service
 GEN_PREFIX ?= example
-GEN_ROOT ?= $(HOME)/.cache/axum-starter-template/m1
+GEN_ROOT ?= $(HOME)/.cache/axum-starter-template/workspaces
 DRIVER = $(PYTHON) scripts/template.py
 ARGS = --name "$(GEN_NAME)" --prefix "$(GEN_PREFIX)" --gen-root "$(GEN_ROOT)"
 .DEFAULT_GOAL := help

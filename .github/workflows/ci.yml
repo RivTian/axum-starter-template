@@ -25,8 +25,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.cache/axum-starter-template/m1/cargo-target
-          key: template-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'cargo-generate.toml') }}
+            ~/.cache/axum-starter-template/workspaces/cargo-target
+          key: template-workspaces-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'cargo-generate.toml') }}
       - name: Pinned generator
         run: cargo install cargo-generate --version 0.24.0 --locked
       - name: Working-tree generation, name matrix and complete project gates
