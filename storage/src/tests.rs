@@ -112,7 +112,11 @@ async fn options_apply_to_every_connection_and_close_waits_for_a_borrower() {
                 .fetch_one(&mut **connection)
                 .await
                 .unwrap();
-            assert_eq!(synchronous, 1, "1 is NORMAL; SQLite's own default is 2");
+            // 2 is FULL. It is also SQLite's own default, so unlike journal_mode
+            // above this assertion pins the promised durability without proving
+            // the pragma was emitted; `prepare()` requests it regardless, because
+            // a default is not a decision.
+            assert_eq!(synchronous, 2, "2 is FULL");
         }
         drop(b);
         assert!(

@@ -95,17 +95,19 @@ impl StorageOwner {
         // pre-existing non-WAL file that another process still holds open fails
         // at the "connect" phase and aborts startup; it never degrades silently.
         //
-        // synchronous: NORMAL under WAL never corrupts the database, and a
-        // process crash loses nothing because committed data already sits in the
-        // OS page cache. An OS crash or power loss can roll back transactions
-        // committed since the last checkpoint. Raise this to FULL if losing them
-        // is unacceptable for the data being stored.
+        // synchronous: FULL fsyncs the WAL at every commit, so a transaction
+        // that returned success survives an OS crash or power loss and not only
+        // a process crash. NORMAL is also corruption-free under WAL and costs
+        // one fewer fsync per commit, but it can roll back transactions
+        // committed since the last checkpoint. A template does not know what it
+        // is storing, so it defaults to the durable end; lowering it to NORMAL
+        // is a per-project decision backed by a measurement of the write path.
         let options = SqliteConnectOptions::new()
             .filename(config.path)
             .create_if_missing(true)
             .foreign_keys(true)
             .journal_mode(SqliteJournalMode::Wal)
-            .synchronous(SqliteSynchronous::Normal)
+            .synchronous(SqliteSynchronous::Full)
             .busy_timeout(config.busy_timeout);
         let pool = SqlitePoolOptions::new()
             .max_connections(config.max_connections)
