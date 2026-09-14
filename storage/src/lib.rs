@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use sqlx::SqlitePool;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
 // Immutable build metadata, not a process-global connection or business state.
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
@@ -82,10 +82,30 @@ impl StorageOwner {
     /// Must be called inside the main runtime. This does not declare readiness:
     /// the lazy pool makes it possible to retain ownership before the first await.
     pub fn prepare(config: StorageConfig) -> Self {
+        // Every pragma below must be requested explicitly. SqliteConnectOptions
+        // emits a pragma only for the ones a caller sets; the `Default` impls on
+        // SqliteJournalMode/SqliteSynchronous are not what an unset field means.
+        //
+        // journal_mode: without WAL a pooled writer holds an exclusive lock over
+        // the whole database and blocks every reader, so a multi-connection pool
+        // turns ordinary concurrency into SQLITE_BUSY. WAL is a persistent
+        // database attribute and switching into it needs an exclusive lock that
+        // busy_timeout cannot wait on, which is why it is set here, on the first
+        // connection of a lazy pool, rather than after migrations. Converting a
+        // pre-existing non-WAL file that another process still holds open fails
+        // at the "connect" phase and aborts startup; it never degrades silently.
+        //
+        // synchronous: NORMAL under WAL never corrupts the database, and a
+        // process crash loses nothing because committed data already sits in the
+        // OS page cache. An OS crash or power loss can roll back transactions
+        // committed since the last checkpoint. Raise this to FULL if losing them
+        // is unacceptable for the data being stored.
         let options = SqliteConnectOptions::new()
             .filename(config.path)
             .create_if_missing(true)
             .foreign_keys(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal)
             .busy_timeout(config.busy_timeout);
         let pool = SqlitePoolOptions::new()
             .max_connections(config.max_connections)

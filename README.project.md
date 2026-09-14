@@ -136,6 +136,14 @@ Cargo 中保留名为 `release-panic-fixture` 的 `[[example]]` 编译目标，�
 SQLx SQLite 的 migration advisory lock 不是跨实例排他锁；两个初始化者竞争时，其中一个可能失败。
 没有自动重试、自动修复版本元数据或“所有中断都会回滚”的承诺。测试中事务迁移的可重启证据不推广到任意业务 SQL、非事务迁移或断电。
 
+### WAL 与持久性
+
+连接显式以 `journal_mode=WAL`、`synchronous=NORMAL` 打开，两者都必须显式请求：驱动只为调用方设置过的项发出 pragma。
+没有 WAL 时，池中的写者会排他锁住整个数据库并挡住全部读者，多连接池的正常并发会退化成 SQLITE_BUSY。
+NORMAL 不会损坏数据库，进程崩溃也不丢已提交数据；但操作系统崩溃或掉电可能回滚上次 checkpoint 之后已提交的事务。不接受这一点就把 `synchronous` 调到 FULL。
+WAL 是数据库的持久属性，转换需要 busy_timeout 等不到的独占锁，因此它在建立连接选项时设置而不是迁移之后。若已有非 WAL 文件正被其他进程持有，启动在 connect 阶段失败，不会静默降级。
+运行时数据目录会多出 `-wal` 与 `-shm` 两个伴随文件，已列入 `.gitignore`。
+
 ### 删除 ticker 示例
 
 这是删除代码，不是新增一个 feature/配置开关：

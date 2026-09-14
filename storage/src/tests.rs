@@ -27,6 +27,12 @@ async fn empty_migrations_bootstrap_only_sqlx_metadata_and_can_restart() {
             let foreign_keys: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
                 .fetch_one(&owner.pool).await.unwrap();
             assert_eq!(foreign_keys, 1);
+            // WAL is a persistent database attribute: the second pass reopens a
+            // file that is already in it, which must stay a no-op rather than a
+            // conversion attempt.
+            let journal: String = sqlx::query_scalar("PRAGMA journal_mode")
+                .fetch_one(&owner.pool).await.unwrap();
+            assert_eq!(journal, "wal");
             owner.close().await;
             assert_eq!(storage.health().await.unwrap_err().phase(), "health");
         }
@@ -94,6 +100,19 @@ async fn options_apply_to_every_connection_and_close_waits_for_a_borrower() {
                 .await
                 .unwrap();
             assert_eq!(enabled, 1);
+            // A pooled writer must not take an exclusive lock over the whole
+            // database, and the durability trade must be the one prepare()
+            // requested rather than whatever the driver happens to leave unset.
+            let journal: String = sqlx::query_scalar("PRAGMA journal_mode")
+                .fetch_one(&mut **connection)
+                .await
+                .unwrap();
+            assert_eq!(journal, "wal");
+            let synchronous: i64 = sqlx::query_scalar("PRAGMA synchronous")
+                .fetch_one(&mut **connection)
+                .await
+                .unwrap();
+            assert_eq!(synchronous, 1, "1 is NORMAL; SQLite's own default is 2");
         }
         drop(b);
         assert!(

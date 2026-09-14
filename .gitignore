@@ -26,8 +26,5 @@ coverage/
 tmp/
 .temp/
 
-# 本地会话工具目录
-.claude/
-
 # Python maintenance/test caches
 __pycache__/
