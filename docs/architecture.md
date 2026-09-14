@@ -982,6 +982,7 @@ pub async fn serve(
 
 - `code` 始终等于实际 HTTP 状态码；`status` 由同一个构造器生成，handler 不手拼。
 - 成功带数据回裸 JSON；info 仅包含服务名、版本和可选构建 revision，不给配置路径、数据库路径、环境值或 runtime 拓扑。
+- 两种成功形态由 `ApiResponse::{Ok, Data}` 命名：裸 JSON 是被声明的契约，不是「忘了包信封」。裸 `Json<T>` 表达不出这个区别，因此 handler 不直接返回它。契约的三条规则写在 api crate 与 response 模块的文档注释里，随生成项目交付；本节是设计侧记录，生成物不包含 `docs/`。
 - 5xx 对外用有限、稳定的安全描述；原始 SQL、驱动错误、配置内容、用户输入不直接写入 response。
 - 不在本版发明业务错误码注册中心；增加业务错误码属于首个真实 API 的契约设计。
 - HEAD 按 HTTP / axum 语义没有响应体；不能把“HEAD 空 body”列为 JSON 契约失败。

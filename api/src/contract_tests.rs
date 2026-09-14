@@ -147,6 +147,49 @@ async fn health_and_info_do_not_query_storage_and_ready_requires_a_live_running_
     assert_eq!(storage.calls.load(Ordering::SeqCst), 1);
 }
 
+/// `response`'s own tests pin what the types emit; these two pin that the
+/// shipped routes actually use them. Both halves are needed: a handler can
+/// satisfy the type contract and still answer with the wrong one.
+///
+/// Full equality here is deliberate — it also pins that no fourth key appears,
+/// which a client would start reading.
+#[tokio::test]
+async fn success_without_data_is_the_shared_envelope() {
+    let (mut writer, state, _, settings) = setup(Mode::Healthy);
+    writer.publish(Phase::Running);
+    let router = build_router(state, &settings);
+    for path in ["/v1/service/health", "/v1/service/ready"] {
+        let response = router.clone().oneshot(request(path)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{path}");
+        assert_eq!(
+            body(response).await,
+            serde_json::json!({"status": "success", "code": 200, "description": ""}),
+            "{path}"
+        );
+    }
+}
+
+/// Same split as above: this one is about `/v1/service/info` specifically, so
+/// wrapping it in an envelope fails here even if the types stay correct.
+#[tokio::test]
+async fn success_with_data_is_bare_json_without_envelope_keys() {
+    let (_writer, state, _, settings) = setup(Mode::Healthy);
+    let response = build_router(state, &settings)
+        .oneshot(request("/v1/service/info"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let value = body(response).await;
+    let object = value.as_object().expect("info answers with a JSON object");
+    for key in ["status", "code", "description"] {
+        assert!(!object.contains_key(key), "bare JSON must not carry {key}");
+    }
+    assert_eq!(
+        value,
+        serde_json::json!({"service": "test-service", "version": "1.0"})
+    );
+}
+
 #[tokio::test]
 async fn storage_failure_and_probe_timeout_are_json_503() {
     for mode in [Mode::Failed, Mode::Pending] {

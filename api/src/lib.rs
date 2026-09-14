@@ -1,4 +1,18 @@
 //! System HTTP API. The caller owns spawning, startup commit and joining.
+//!
+//! Three response contracts hold across every route. Consumers depend on all
+//! three, so changing one is a breaking API change and not a refactor:
+//!
+//! - success without data, and every error the application can still answer,
+//!   share one `{status, code, description}` envelope whose `code` always
+//!   equals the real HTTP status;
+//! - success with data is the business object serialized bare, with no
+//!   envelope around it;
+//! - 5xx descriptions come from a fixed set and never carry submitted values,
+//!   driver text or configuration.
+//!
+//! `response` owns the first two, `error` the third. Neither leaves the crate,
+//! so these routes are the only way to observe the contracts from outside.
 
 mod error;
 // System routes take no JSON, Path or Query input. Keep these local wrappers

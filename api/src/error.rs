@@ -1,4 +1,5 @@
-use crate::response::Envelope;
+use crate::response::GenericResponse;
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 
@@ -43,6 +44,12 @@ impl HttpError {
 }
 impl IntoResponse for HttpError {
     fn into_response(self) -> Response {
-        (self.status, Envelope::error(self.status, self.description)).into_response()
+        // `description` is a &'static str on this side even though
+        // GenericResponse accepts a String: that is what keeps submitted
+        // values, driver text and configuration out of the body. A later 4xx
+        // variant that must name a resource carries its own String; 5xx never
+        // does.
+        let body = GenericResponse::error(self.status.as_u16(), self.description);
+        (self.status, Json(body)).into_response()
     }
 }
