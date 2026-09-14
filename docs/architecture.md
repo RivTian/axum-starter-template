@@ -984,6 +984,7 @@ pub async fn serve(
 - 成功带数据回裸 JSON；info 仅包含服务名、版本和可选构建 revision，不给配置路径、数据库路径、环境值或 runtime 拓扑。
 - 两种成功形态由 `ApiResponse::{Ok, Data}` 命名：裸 JSON 是被声明的契约，不是「忘了包信封」。裸 `Json<T>` 表达不出这个区别，因此 handler 不直接返回它。契约的三条规则写在 api crate 与 response 模块的文档注释里，随生成项目交付；本节是设计侧记录，生成物不包含 `docs/`。
 - 5xx 对外用有限、稳定的安全描述；原始 SQL、驱动错误、配置内容、用户输入不直接写入 response。
+- 错误侧由 `HttpError` 枚举承担，状态码与安全描述集中成一张表，`error` 模块的表测逐变体钉死；handler 不能现场指定任意 (状态码, 文案) 组合。描述是 `&'static str`，没有插值的缝，因此「不把用户输入写进 5xx」是类型错误而不是纪律。503 与 500 的分界是「换个时间再来会不会好」：503 说依赖此刻不通、请求本身没毛病，调用方可以退避重试；500 说这条路走不通，重试多少次都一样。混用会让客户端的重试策略失去依据。
 - 不在本版发明业务错误码注册中心；增加业务错误码属于首个真实 API 的契约设计。
 - HEAD 按 HTTP / axum 语义没有响应体；不能把“HEAD 空 body”列为 JSON 契约失败。
 - 错误信封的边界不覆盖 malformed HTTP、TLS、对端断开、响应已发送后的流错误和进程被强杀。
@@ -1295,6 +1296,20 @@ M2 可作为内部审阅的单 runtime 切片，不得宣称完整模板已验�
 对现有分支不做原地业务迁移，也不 cherry-pick 整个备份。
 需要复用工程件时记录来源对象与改造差异；后续以小提交推进，任何失败都可以退回上一已验证阶段。
 数据库迁移一旦被生成服务实际使用，回滚代码不自动回滚 schema，遵守 §8 的迁移纪律。
+
+### 13.1 与 edge_dev api 层的刻意分叉
+
+蓝本为 `edge_dev` 对象 `8ef2153` 的 `api/src/response.rs` 与 `api/src/error.rs`（见 §15.1）。
+响应契约三条规则与 503/500 分界原文已整体搬入，下列差异是有意保留的，不是尚未对齐：
+
+| 分叉 | 模板的选择 | 理由 |
+| --- | --- | --- |
+| `HttpError` 的描述类型 | 保持 `&'static str`，不放开为 `String` | edge_dev 的六个业务变体各自带 `String`，是业务路由要指名资源的结果。模板没有业务路由，收紧成 `&'static str` 后「5xx 不含用户输入」由编译器保证；首个业务变体自带 `String` 并只在 4xx 渲染 |
+| 业务错误变体与 406 校验契约 | 不预置 `BadRequest`/`ValidationError`/`Conflict` 等变体 | §9.3 已声明业务错误码属于首个真实 API 的契约设计；空变体只会被复制粘贴成错误的语义 |
+| `From<StorageError> for HttpError` | 不提供 | 模板的 `StorageError` 只带 `phase()`（connect/migrate/health），任何映射都只能产出 500，写出来是零信息的仪式 |
+| 404 响应体 | 不回显 method 与 path | 比 edge_dev 更严：未认证调用方只应知道「没有匹配」。`Allow` 头仍由 axum 提供，那是客户端真正要用的部分 |
+| `Rejected(StatusCode)` 变体 | 模板独有 | 模板的 extractor 包装要保留框架自己判定的 4xx（415/400/422/413），edge_dev 在业务层没有这条路径 |
+| `thiserror::Error` 派生 | 只派生 `Debug` | edge_dev 需要它是因为 `#[from]` 传播；模板的 `HttpError` 只被转成响应，派生 `Display` 会让文案有两处来源 |
 
 ---
 

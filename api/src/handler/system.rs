@@ -16,13 +16,13 @@ pub(crate) fn routes(settings: &HttpSettings) -> Router<AppState> {
             "/service/ready",
             get(move |State(state): State<AppState>| async move {
                 if state.lifecycle.phase() != Some(Phase::Running) {
-                    return Err(HttpError::unavailable());
+                    return Err(HttpError::NotReady);
                 }
                 match tokio::time::timeout(probe, state.storage.health()).await {
                     Ok(Ok(())) if state.lifecycle.phase() == Some(Phase::Running) => {
                         Ok(ApiResponse::<()>::Ok)
                     }
-                    _ => Err(HttpError::unavailable()),
+                    _ => Err(HttpError::NotReady),
                 }
             }),
         )

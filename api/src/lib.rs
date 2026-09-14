@@ -30,7 +30,6 @@ pub use state::AppState;
 
 use axum::Router;
 use axum::extract::{MatchedPath, Request};
-use axum::http::StatusCode;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use service_core::lifecycle::LifecycleClosed;
@@ -50,12 +49,12 @@ pub fn build_router(state: AppState, settings: &HttpSettings) -> Router {
 fn finish(router: Router<AppState>, state: AppState, settings: &HttpSettings) -> Router {
     let budget = settings.request_timeout;
     router
-        .fallback(|| async { error::HttpError::new(StatusCode::NOT_FOUND, "route not found") })
-        .method_not_allowed_fallback(|| async { error::HttpError::new(StatusCode::METHOD_NOT_ALLOWED, "method not allowed") })
+        .fallback(|| async { error::HttpError::NotFound })
+        .method_not_allowed_fallback(|| async { error::HttpError::MethodNotAllowed })
         .layer(middleware::from_fn(move |request: Request, next: Next| async move {
             match tokio::time::timeout(budget, next.run(request)).await {
                 Ok(response) => response,
-                Err(_) => error::HttpError::timeout().into_response(),
+                Err(_) => error::HttpError::Timeout.into_response(),
             }
         }))
         .layer(TraceLayer::new_for_http()
