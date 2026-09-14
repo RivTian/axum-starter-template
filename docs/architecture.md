@@ -240,30 +240,36 @@ axum-starter-template/
 │   │   │   ├── mod.rs                 # RawConfig / BootConfig / Candidate
 │   │   │   ├── load.rs                # 默认路径、来源选择与三段式加载
 │   │   │   ├── runtime.rs             # 冷拓扑、名字/引用/预算校验
-│   │   │   └── reload.rs              # 单飞加载、冷热比较、唯一提交点
+│   │   │   ├── reload.rs              # 单飞加载、冷热比较、唯一提交点
+│   │   │   └── {tests.rs,reload/tests.rs} # 拆出的单元测试模块
 │   │   ├── boot.rs                    # 启动资源所有者与启动提交
 │   │   ├── supervisor.rs              # app 私有，直接持有实际任务
 │   │   ├── shutdown.rs                # deadline、收割报告、统一清理
 │   │   ├── signals.rs                 # OS 适配，不承载状态机
 │   │   ├── rt.rs                      # 可选 runtime 拓扑及同步销毁
-│   │   └── telemetry.rs               # 唯一 tracing 初始化
-│   └── tests/                         # 进程级生命周期验收
-│       └── fixtures/release_panic.rs   # 独立 release 回归夹具，不是服务使用示例
+│   │   ├── telemetry.rs               # 唯一 tracing 初始化
+│   │   └── {boot,rt,supervisor}/tests.rs # 同上；shutdown/cli/telemetry 的测试内联在各文件末尾
+│   └── tests/                         # cargo 集成测试与进程级驱动并存
+│       ├── runtime_semantics.rs       # 进程内多 runtime / JoinSet 所有权语义探针
+│       ├── check_service.py           # 真进程：端点契约、信号、重载、fail-fast、拓扑矩阵
+│       ├── check_logging.py           # 真 stdout：PTY / 管道 / 文件三种 sink
+│       ├── check_release.py           # 真 release 二进制的受控 panic 与退出码
+│       └── fixtures/release_panic.rs  # 独立 release 回归夹具，不是服务使用示例
 ├── core/
 │   ├── Cargo.toml / README.md
-│   └── src/{lib.rs,config.rs,lifecycle.rs}
+│   └── src/{lib.rs,config.rs,lifecycle.rs} # 单元测试内联在各文件末尾
 ├── storage/
 │   ├── Cargo.toml / README.md / build.rs
 │   ├── migrations/README.md           # 起始无业务 .sql 文件
-│   └── src/{lib.rs,tests.rs,migration_tests.rs} # 真 SQLite 与测试专属迁移 fixture
+│   └── src/{lib.rs,tests.rs,migration_tests.rs} # 真 SQLite 与测试专属迁移 fixture，用私有 pool
 ├── worker/
 │   ├── Cargo.toml / README.md
-│   └── src/lib.rs
+│   └── src/lib.rs                     # 单元测试内联在文件末尾
 ├── api/
 │   ├── Cargo.toml / README.md
 │   ├── src/{lib.rs,state.rs,error.rs,response.rs,extract.rs}
 │   ├── src/handler/{mod.rs,system.rs}
-│   └── src/{contract_tests.rs,tests.rs} # Router 黑盒契约与真实连接测试
+│   └── src/{contract_tests.rs,tests.rs} # Router 契约与真实连接测试，用私有 extract / finish
 ├── hooks/{pre.rhai,post.rhai}
 ├── scripts/                           # 仅模板维护的生成/格式/结构验收脚本
 ├── .github/workflows/ci.yml            # 模板自己的 CI
@@ -272,6 +278,16 @@ axum-starter-template/
 
 不建 `reconcile`，也不预建 `testkit`。共享测试 crate 只有在两个以上 crate 确实重复同一资源夹具、
 且不会引入生产反向依赖时才允许增加；本版优先 crate 本地测试模块和少量显式 fake。
+
+**测试落点由可见性决定，不是风格选择。** app 是纯二进制 crate（只有 `[[bin]]`，无 `[lib]`），
+`tests/` 无法导入它的模块，因此 boot / config / rt / supervisor / shutdown / cli / telemetry 的用例
+只能是 `src/` 内的 `#[cfg(test)] mod`；为了让它们搬进 `tests/` 而给 app 加 `[lib]` 目标，
+等于把装配层内部导出成库公共面，与 §3.3"`TaskSupervisor` 不向 api/worker 导出"直接冲突。
+api 的契约测试使用私有 `extract` 包装器与私有 `finish`，storage 的测试使用私有连接池与测试专属
+`Migrator`，同样不能搬进各自的 `tests/`。只有确实仅依赖公共面的用例才放 `tests/`；
+把大体量测试模块拆成独立文件只是体量决策，不改变它们仍是单元测试这一事实。
+`app/tests/` 因此同时存放三类 cargo 语义不同的东西：集成测试目标、`[[example]]` 回归夹具、
+以及 cargo 完全不运行的进程级驱动（见 §12.1）。
 
 ### 3.3 所有权账本
 
@@ -1155,9 +1171,22 @@ M5 维护入口显式使用 `--no-workspace`，防止生成到另一 workspace �
 | 监督器 | 可控 future、Drop 探针、panic、pending、真实 JoinSet | 不只断言发出过 abort |
 | API | Router + `oneshot`、本地 Storage fake | 不需要真实 DB / TCP / TLS |
 | 存储 | 每测试独立 tempfile SQLite、真实 Migrator、测试 fixture | 不共用固定数据库、不带业务种子表 |
-| 多 runtime | 普通同步 `#[test]` 构建多个真实 multi-thread runtime | 不在 `#[tokio::test]` 内直接 Drop 嵌套 Runtime；虚拟时钟不能证明跨 runtime 调度 |
-| 进程与信号 | 子进程、OS 分配端口、启动握手、外层终止回收 guard | 不在测试进程给自己发信号、不固定端口、不留下失败子进程 |
-| 生成/工程链 | 临时目录、名称矩阵、clean-room 构建、manifest/feature 解析 | 不只 grep 出单词就当成依赖隔离成立 |
+| 多 runtime | 普通同步 `#[test]` 构建多个真实 multi-thread runtime（`app/tests/runtime_semantics.rs`，进程内） | 不在 `#[tokio::test]` 内直接 Drop 嵌套 Runtime；虚拟时钟不能证明跨 runtime 调度 |
+| 进程与信号 | 子进程、OS 分配端口、启动握手、外层终止回收 guard（`app/tests/check_service.py` / `check_logging.py` / `check_release.py`） | 不在测试进程给自己发信号、不固定端口、不留下失败子进程 |
+| 生成/工程链 | 临时目录、名称矩阵、clean-room 构建、manifest/feature 解析（`scripts/test_template.py` 与 `scripts/template.py`） | 不只 grep 出单词就当成依赖隔离成立 |
+
+**执行入口不统一；`cargo test` 不是完整门禁。** 上表前六层由 `cargo test --workspace --locked` 覆盖。
+"进程与信号"层由 `app/tests/` 下的 Python 驱动承载：`check_service.py`（5 种 runtime 拓扑 × debug/release，
+覆盖端点与错误信封契约、SIGHUP 重载、慢首部关闭、客户端断开、bind 失败回滚、
+配置/拓扑/存储路径/迁移的 fail-fast、存储初始化期信号）、
+`check_logging.py`（PTY / 管道 / 文件三种 stdout sink × debug/release）、
+`check_release.py`（构建并运行真 release 二进制，校验受控 panic 的退出码）。cargo 不识别这些文件，
+只有生成项目 `Makefile.project` 的 `service-check` / `logging-check` / `release-check` 会运行它们；
+"生成/工程链"层则由模板自己的 `Makefile` 经 `tooling-test` 与 `check` 运行，不在生成项目内。
+因此只跑 `cargo test` 会得到一个不含任何进程级证据的全绿结果；生成项目的完整门禁是 `make check`
+（`Makefile.project`），其 CI（`project-ci/workflows/ci.yml`）执行的也是它。
+§12.2–§12.5 的 LIFE / RT / CFG / TICK / DB / HTTP / GEN 编号是文档编号，不出现在任何测试名或源码中；
+定位用例需按上述入口与文件对照，不能靠搜索 ID。
 
 ### 12.2 生命周期与 runtime 验收
 
