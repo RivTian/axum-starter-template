@@ -326,6 +326,71 @@ dependencies = [
 ]
 
 [[package]]
+name = "{{crate_prefix}}-api"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "{{crate_prefix}}-core 0.1.0",
+ "{{crate_prefix}}-storage 0.1.0",
+ "serde 1.0.229 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_json 1.0.151 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror 2.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio 1.53.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-util 0.7.19 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-http 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tracing 0.1.44 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "{{crate_prefix}}-app"
+version = "0.1.0"
+dependencies = [
+ "{{crate_prefix}}-api 0.1.0",
+ "{{crate_prefix}}-core 0.1.0",
+ "{{crate_prefix}}-storage 0.1.0",
+ "{{crate_prefix}}-worker 0.1.0",
+ "serde 1.0.229 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_path_to_error 0.1.20 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tempfile 3.27.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror 2.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio 1.53.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-util 0.7.19 (registry+https://github.com/rust-lang/crates.io-index)",
+ "toml 1.1.6+spec-1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tracing 0.1.44 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tracing-subscriber 0.3.23 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "{{crate_prefix}}-core"
+version = "0.1.0"
+dependencies = [
+ "tokio 1.53.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-util 0.7.19 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "{{crate_prefix}}-storage"
+version = "0.1.0"
+dependencies = [
+ "sqlx 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tempfile 3.27.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror 2.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio 1.53.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "{{crate_prefix}}-worker"
+version = "0.1.0"
+dependencies = [
+ "{{crate_prefix}}-core 0.1.0",
+ "thiserror 2.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio 1.53.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-util 0.7.19 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tracing 0.1.44 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -770,71 +835,6 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
-
-[[package]]
-name = "{{crate_prefix}}-api"
-version = "0.1.0"
-dependencies = [
- "axum 0.8.9 (registry+https://github.com/rust-lang/crates.io-index)",
- "{{crate_prefix}}-core 0.1.0",
- "{{crate_prefix}}-storage 0.1.0",
- "serde 1.0.229 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_json 1.0.151 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror 2.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio 1.53.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-util 0.7.19 (registry+https://github.com/rust-lang/crates.io-index)",
- "tower 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "tower-http 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "tracing 0.1.44 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "{{crate_prefix}}-app"
-version = "0.1.0"
-dependencies = [
- "{{crate_prefix}}-api 0.1.0",
- "{{crate_prefix}}-core 0.1.0",
- "{{crate_prefix}}-storage 0.1.0",
- "{{crate_prefix}}-worker 0.1.0",
- "serde 1.0.229 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_path_to_error 0.1.20 (registry+https://github.com/rust-lang/crates.io-index)",
- "tempfile 3.27.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror 2.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio 1.53.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-util 0.7.19 (registry+https://github.com/rust-lang/crates.io-index)",
- "toml 1.1.6+spec-1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "tracing 0.1.44 (registry+https://github.com/rust-lang/crates.io-index)",
- "tracing-subscriber 0.3.23 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "{{crate_prefix}}-core"
-version = "0.1.0"
-dependencies = [
- "tokio 1.53.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-util 0.7.19 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "{{crate_prefix}}-storage"
-version = "0.1.0"
-dependencies = [
- "sqlx 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "tempfile 3.27.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror 2.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio 1.53.1 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "{{crate_prefix}}-worker"
-version = "0.1.0"
-dependencies = [
- "{{crate_prefix}}-core 0.1.0",
- "thiserror 2.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio 1.53.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-util 0.7.19 (registry+https://github.com/rust-lang/crates.io-index)",
- "tracing 0.1.44 (registry+https://github.com/rust-lang/crates.io-index)",
-]
 
 [[package]]
 name = "matchers"
