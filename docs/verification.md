@@ -1,5 +1,40 @@
 # 当前模板验证记录
 
+## 追加记录：handler panic 纳入错误信封（2026-09-15）
+
+- **本次范围**：为 router 装配加 `tower_http::catch_panic::CatchPanicLayer`，把 handler panic 答成统一 JSON 500；`api` 的三条响应契约因此对每条路由成立。下方 2026-09-14 段落保持原样，是当日那次变更的记录，不改写成本次数字。
+- **实际环境**：macOS 26.6.2 arm64；Rust 1.97.1，Python 3.14.7。远端 CI 和其他平台没有因此被视为已通过。
+- **本次跑过的门禁**：`make check`（含工具测试、默认工程完整 gate、名称矩阵）与 `make verify`（独立空 target）各一次，全部退出 0。actionlint、`python -O` 工具测试和 `panic="abort"` 负向探针本次没有重跑，仍以 2026-09-14 段落为准。
+
+| 检查 | 结果 |
+| --- | --- |
+| `make check` / `make verify` | 均通过 |
+| workspace Rust tests | 每组 98 项通过。本次变更贡献 +1：`api` 新增 panic 信封契约测例，原有 panic 测例改为断言 500 与连接存活。97 → 98；与 2026-09-14 段落的 91 之间的差额来自其后的提交，不是本次 |
+| 维护工具 tests | 26 项通过 |
+| 真实服务进程 | check 与 verify 各 250 场景通过，覆盖 debug/release × 五布局 |
+| 日志 | 每个完整 gate 各 12 场景通过 |
+| 依赖 | 未新增第三方 crate；`tower-http` 增加 `catch-panic` feature，`Cargo.lock` 中 tower-http 增加 `futures-util`、`http-body-util` 两条依赖边，两者本已在图中 |
+
+本次模板锁文件 SHA-256：
+
+```text
+190e91bab667246383521b3c182385f8018bde97cf923ee4a1a3de5b810b8145
+```
+
+原始报告：
+
+```text
+/Users/riotian/.cache/axum-starter-template/workspaces/gen-example-service-8sey8ab3/verification.json
+/Users/riotian/.cache/axum-starter-template/workspaces/gen-parallel-probe-5op3kzth/matrix.json
+/Users/riotian/.cache/axum-starter-template/workspaces/gen-clean-room-service-8f7_peaj/verification.json
+```
+
+本机日志：`/tmp/axum-catchpanic-check.log`、`/tmp/axum-catchpanic-verify.log`。
+
+---
+
+## 基线记录：生成内容与实施历史解耦（2026-09-14）
+
 - **日期**：2026-09-14。
 - **本次范围**：生成内容与实施历史解耦，release panic 回归夹具归位，以及防止重新泄漏的输出门禁。
 - **运行状态**：本地完整回归通过；默认生成与独立空 target 验证均通过。

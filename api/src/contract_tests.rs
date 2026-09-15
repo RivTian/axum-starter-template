@@ -17,13 +17,13 @@ use tokio::sync::Notify;
 use tower::ServiceExt;
 
 #[derive(Clone)]
-enum Mode {
+pub(super) enum Mode {
     Healthy,
     Failed,
     Pending,
     Gated(Arc<Notify>, Arc<Notify>),
 }
-struct Fake {
+pub(super) struct Fake {
     mode: Mode,
     calls: AtomicUsize,
 }
@@ -44,14 +44,25 @@ impl Storage for Fake {
         })
     }
 }
-fn setup(
-    mode: Mode,
-) -> (
+type Fixture = (
     lifecycle::LifecyclePublisher,
     AppState,
     Arc<Fake>,
     HttpSettings,
-) {
+);
+
+fn setup(mode: Mode) -> Fixture {
+    setup_with(mode, Duration::from_millis(100), Duration::from_millis(20))
+}
+
+/// The same fixture with an explicit budget. The real-socket probes in `tests`
+/// drive a panic and then a second request through one connection, so they need
+/// a deadline that survives a loaded machine rather than the in-process default.
+pub(super) fn setup_with(
+    mode: Mode,
+    request_timeout: Duration,
+    probe_timeout: Duration,
+) -> Fixture {
     let (writer, reader) = lifecycle::channel();
     let storage = Arc::new(Fake {
         mode,
@@ -67,8 +78,8 @@ fn setup(
     };
     let settings = HttpSettings::new(
         "127.0.0.1:0".parse().unwrap(),
-        Duration::from_millis(100),
-        Duration::from_millis(20),
+        request_timeout,
+        probe_timeout,
     )
     .unwrap();
     (writer, state, storage, settings)
@@ -361,6 +372,38 @@ async fn the_outer_request_deadline_uses_the_same_json_error_envelope() {
             .unwrap();
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(body(response).await["code"], 503);
+}
+
+/// The other end of the same claim: a route that does not return at all still
+/// answers inside the envelope. The panic message is built from a value a
+/// caller could have submitted, so this pins the non-leak rule as well -- the
+/// payload reaches neither the body nor any header.
+#[tokio::test]
+async fn a_handler_panic_takes_the_same_json_error_envelope() {
+    let (_writer, state, _, settings) = setup(Mode::Healthy);
+    let router = finish(
+        Router::new().route(
+            "/panic",
+            get(|| async {
+                panic!("test-only panic carrying PRIVATE_TOKEN");
+                #[allow(unreachable_code)]
+                "never returned"
+            }),
+        ),
+        state,
+        &settings,
+    );
+    let response = router.oneshot(request("/panic")).await.unwrap();
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let value = body(response).await;
+    assert_eq!(value["status"], "error");
+    assert_eq!(value["code"], 500);
+    assert_eq!(value["description"], "internal server error");
+    assert_eq!(
+        value.as_object().expect("an envelope is an object").len(),
+        3
+    );
+    assert!(!value.to_string().contains("PRIVATE_TOKEN"));
 }
 
 #[tokio::test]

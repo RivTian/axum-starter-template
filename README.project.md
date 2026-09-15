@@ -122,7 +122,7 @@ Cargo 中保留名为 `release-panic-fixture` 的 `[[example]]` 编译目标，�
 `logging-check` 在 debug/release 的实际进程中验证 PTY 自动彩色、`NO_COLOR`（含空值）、`TERM=dumb`、管道和文件纯文本，且逐例检查正常启动/关停字段。
 `service-check` 在 debug/release × 五种布局的实际服务进程中验证端点、信号、启动失败、配置路径/优先级和独立实例。
 故障注入只存在于测试/example，生产主程序没有 panic 开关、测试路由或管理后门。
-真实服务测试还覆盖未完成 HTTP header 与客户端断开后的有界退出；请求 panic 的连接/任务区别由 API 中仅测试路由验证。
+真实服务测试还覆盖未完成 HTTP header 与客户端断开后的有界退出；handler panic 被答复成 JSON 500 且不掀掉连接，由 API 中仅测试路由在真实 socket 上验证。
 
 ## 从示例走向自己的服务
 
@@ -162,10 +162,10 @@ WAL 是数据库的持久属性，转换需要 busy_timeout 等不到的独占�
 - 五 crate、SQLite 单后端，无业务表；迁移元数据表不算业务预铺。
 - **SIGHUP 只热改 `ticker.interval_ms`**；无变化不增代，非法配置保留旧快照，冷字段或冷热混合变化整批拒绝并要求重启。
 - 默认只有一个 multi-thread runtime；可选 extra 与任务绑定只在启动时装配，改动必须重启。
-- 任务错误/panic 由顶层监督器处理；请求内部 panic 不等于 HTTP 顶层任务退出。
+- 任务错误/panic 由顶层监督器处理；请求内部 panic 由 router 的 catch-panic 层就地答复 500，不等于 HTTP 顶层任务退出，也不会送到监督器。
 - `abort` 不能强杀不可中断的线程；若要求硬进程截止，交由外部进程管理者实施。
 - 已在 macOS arm64 验证模板闭环；附带的 CI 定义覆盖 Linux/macOS，但 workflow 文件存在不等于对应远端运行已通过。Windows 的信号/PTY/进程工具链尚未验收。
-- 慢 header、请求 panic 或强制关停不保证返回 JSON；外层 HTTP task 被 abort 不是逐连接收割证明。
+- 慢 header、响应 body 流式发送途中的 panic 或强制关停不保证返回 JSON；外层 HTTP task 被 abort 不是逐连接收割证明。
 - Rust/MSRV 是当前已验证基线，不声称是理论最低版本；线程/超时预算不是生产 SLA。
 
 增加业务时按垂直切片修改：新增迁移、仓储门面方法、组件逻辑及契约测试；不要提前添加闲置 AppState 字段或通用 Service/plugin 框架。

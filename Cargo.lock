@@ -1619,8 +1619,10 @@ checksum = "08a05a66a4fdd61cbbe0a1d755ffe0ca6aba159dd4820936a0ff8a8278245b9c"
 dependencies = [
  "bitflags 2.13.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytes 1.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures-util 0.3.34 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "http-body 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "http-body-util 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "percent-encoding 2.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "pin-project-lite 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "tower-layer 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -13,6 +13,14 @@
 //!
 //! `response` owns the first two, `error` the third. Neither leaves the crate,
 //! so these routes are the only way to observe the contracts from outside.
+//!
+//! "Every route" includes one that panics: [`finish`] installs a panic guard,
+//! so a bug in a handler is answered `500 internal server error` in the
+//! envelope instead of resetting the peer's connection. Two cases still fall
+//! outside, and neither is reachable from inside a handler body -- a panic
+//! raised while a streaming response body is polled, whose status line has
+//! already been sent and cannot be retracted, and a connection the forced
+//! shutdown path drops without a reply.
 
 mod error;
 // System routes take no JSON, Path or Query input. Keep these local wrappers
@@ -36,6 +44,7 @@ use service_core::lifecycle::LifecycleClosed;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
+use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::trace::TraceLayer;
 
 pub fn build_router(state: AppState, settings: &HttpSettings) -> Router {
@@ -57,6 +66,11 @@ fn finish(router: Router<AppState>, state: AppState, settings: &HttpSettings) ->
                 Err(_) => error::HttpError::Timeout.into_response(),
             }
         }))
+        // Order is load-bearing: outside the deadline middleware so a panic
+        // raised there is caught too, inside TraceLayer so the 500 it
+        // synthesises is recorded like any other response and its error event
+        // lands in the request span. Reordering the three breaks both.
+        .layer(CatchPanicLayer::custom(error::panic_response))
         .layer(TraceLayer::new_for_http()
             .make_span_with(|request: &Request| {
                 let route = request.extensions().get::<MatchedPath>().map_or("<unmatched>", MatchedPath::as_str);

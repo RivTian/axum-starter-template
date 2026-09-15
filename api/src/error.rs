@@ -27,6 +27,7 @@ use crate::response::GenericResponse;
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use std::any::Any;
 
 #[derive(Debug)]
 pub(crate) enum HttpError {
@@ -105,6 +106,23 @@ impl IntoResponse for HttpError {
         let body = GenericResponse::error(status.as_u16(), description);
         (status, Json(body)).into_response()
     }
+}
+
+/// Answer a caught handler panic from the table above, as [`HttpError::Internal`]:
+/// an unwind carries no status, so that is the only honest reading of it.
+/// Installed once, at the router assembly point in [`crate::finish`].
+///
+/// The payload is dropped rather than rendered or logged, for two separate
+/// reasons. It must not reach the body because `panic!("{input}")` produces a
+/// `String` payload -- exactly the class of text 5xx descriptions exist to
+/// exclude. It need not reach the log because the default panic hook has
+/// already written the message and its location to stderr, which the template
+/// expects the log collector to capture. What is recorded here is the one
+/// thing stderr cannot carry: the event is emitted inside the request span, so
+/// the panic is attributed to a `matched_route` rather than to a thread.
+pub(crate) fn panic_response(_payload: Box<dyn Any + Send + 'static>) -> Response {
+    tracing::error!("handler panicked");
+    HttpError::Internal.into_response()
 }
 
 #[cfg(test)]

@@ -163,7 +163,7 @@
 | E1 | 只有 `/v1/service/{health,ready,info}` 三个系统端点，无另设探针别名 | 一套路由契约即可；未知路径另有统一 fallback |
 | E2 | health 不访问数据库；ready 检查生命周期与有界存储探测 | 区分存活、已装配和依赖可用性 |
 | E3 | 层逻辑直接放 router 装配处；不预建 middleware 目录 | 当前层数少，不提前抽象 |
-| E4 | 应用可生成的 404、405、超时、提取失败和内部错误统一映射 | 不把 handler 之外的失败漏出契约 |
+| E4 | 应用可生成的 404、405、超时、提取失败、handler panic 和内部错误统一映射 | 不把 handler 之外的失败漏出契约 |
 | E5 | `AppState` 每个字段都有当前 handler / layer 消费者 | 没人读取配置就不注入整个 ConfigHandle；没人读指标就不放 Metrics |
 | E6 | 提取器包装保留框架状态码；5xx 文本泛化；错误不回显密钥和请求体 | `api/src/extract.rs` 是唯一预置例外 |
 | E7 | API 不持有配置写端、根 token、runtime 或 supervisor | HTTP 不成为第二个装配中心 |
@@ -987,7 +987,8 @@ pub async fn serve(
 - 错误侧由 `HttpError` 枚举承担，状态码与安全描述集中成一张表，`error` 模块的表测逐变体钉死；handler 不能现场指定任意 (状态码, 文案) 组合。描述是 `&'static str`，没有插值的缝，因此「不把用户输入写进 5xx」是类型错误而不是纪律。503 与 500 的分界是「换个时间再来会不会好」：503 说依赖此刻不通、请求本身没毛病，调用方可以退避重试；500 说这条路走不通，重试多少次都一样。混用会让客户端的重试策略失去依据。
 - 不在本版发明业务错误码注册中心；增加业务错误码属于首个真实 API 的契约设计。
 - HEAD 按 HTTP / axum 语义没有响应体；不能把“HEAD 空 body”列为 JSON 契约失败。
-- 错误信封的边界不覆盖 malformed HTTP、TLS、对端断开、响应已发送后的流错误和进程被强杀。
+- handler panic 也落在这张表上：catch-panic 层把 unwind 答复成固定的 500 信封。这是把表的覆盖范围补齐，不是新增一行——unwind 本身不带状态码，唯一诚实的读法就是 `Internal`。panic payload 既不进 body（`panic!("{input}")` 的 payload 正是 5xx 描述要排除的那类文本），也不进日志（默认 panic hook 已写 stderr）；只在请求 span 内记一条事件，让 panic 能归到 `matched_route`。
+- 错误信封的边界不覆盖 malformed HTTP、TLS、对端断开、响应 head 已发出后 body 流式阶段的 panic 或错误，以及进程被强杀。
 
 ### 9.4 router 完整覆盖
 
@@ -997,10 +998,14 @@ pub async fn serve(
 - 已有 GET 路由收到 POST 等不支持方法时的 JSON 405，并保留框架正确的 `Allow` 语义；
 - Json / Path / Query rejection，包括媒体类型、语法、数据形状、payload 过大及内部提取错误；
 - 应用请求处理期限到期时的 JSON 503；本版不用返回空 body 的默认 TimeoutLayer 响应冒充统一错误格式；
+- handler panic 的 JSON 500，见 §9.3；
 - DB 探测自己的 503，必须比外层请求期限更早完成。
 
 请求 timeout 用 router 装配处的简短内联 middleware 实现，统一调用 HttpError 转换，
-不建 middleware 目录、不新增服务 trait。TraceLayer 放在它外侧，连超时响应也能记录。
+不建 middleware 目录、不新增服务 trait。三层顺序本身是契约的一部分：期限 middleware 在最内，
+`CatchPanicLayer` 在它外侧（连期限层自身的 panic 一并接住），TraceLayer 在最外（超时响应和合成的 500 都能记录，
+panic 事件也落在 `http_request` span 内）。catch-panic 的前提是 release 保持 `panic = "unwind"`，
+与监督器依赖的是同一项设置；它只接住 handler 的 unwind，不是通用恢复机制，panic 仍是待修的缺陷。
 
 提取器 body 限制沿用框架有限默认值并在包装测试中验证；不因三个 GET 端点预放可配置的业务上传大小。
 后来新增流式 body 消费者必须自己提供大小、空闲、总期限及取消策略，不能误以为默认提取器限制覆盖所有读取方式。
@@ -1022,7 +1027,7 @@ TraceLayer 必须显式选用 method、匹配的**路由模板**、status、late
 4. 返回非零，并在总结日志保留 HTTP 未排空的事实。
 
 请求处理 timeout 不覆盖所有慢 header、长连接和流式 body；库内 accept / 单连接错误也不必都表现为顶层 future 返回 Err。
-同理，单个 handler panic 发生在库管理的连接任务内，不必导致 HTTP 顶层面退出；本版的 first-failure 不冒充请求级 panic 监督。[R7]
+同理，单个 handler panic 由 catch-panic 层就地答复，既不导致 HTTP 顶层面退出，也不会成为 JoinError 送到 supervisor；本版的 first-failure 不冒充请求级 panic 监督。[R7]
 本版不承诺只靠三个系统端点的普通请求测例，就证明任意协议扩展都能限时无损停机。
 
 如果未来要求“到期限逐连接强制关闭后，仍在同一进程内安全复用数据库并继续运行”，
@@ -1060,9 +1065,12 @@ SQLx 或 panic 的原始文字可能包含敏感数据，内部日志也不是�
   颜色策略在 app 启动时捕获，只改变呈现，不改变事件/字段、日志过滤或配置热重载契约；不新增配置字段或依赖。
 - 全局 subscriber 和 OS 信号处理是进程基础设施例外；它们不是业务状态单例。集成装配函数本身不安装它们。
 - 两实例测试使用私有 subscriber 或显式注入捕获设施；信号、CLI、panic 的进程副作用只在子进程验证。
-- release 保持 unwind：任务 panic 才可能成为 JoinError 被监督器看到。默认 panic hook 可能先写 stderr，
+- release 保持 unwind：任务 panic 才可能成为 JoinError 被监督器看到，router 的 catch-panic 层也才可能把 handler panic 答成 500。
+  两处依赖同一项设置，改成 `panic = "abort"` 会同时废掉它们。默认 panic hook 可能先写 stderr，
   模板不为了消除这行输出安装全局“吞 panic”hook；日志采集需要同时采集 stderr。[R8]
 - 不把 `catch_unwind` 当成内存损坏、abort 或 FFI 故障的恢复手段；模板不承诺这些情况还能执行析构。
+  catch-panic 层同样只是让 HTTP 响应契约在有缺陷的路由上也成立，不是把 panic 变成可用的控制流；
+  unwind 穿过 handler 后，它持有的状态维持原样，本模板的 state 没有锁，业务自己引入锁时要自行处理中毒。
 
 ### 10.3 最小观测字段
 
@@ -1254,7 +1262,7 @@ M5 维护入口显式使用 `--no-workspace`，防止生成到另一 workspace �
 | HTTP-04 | 错误媒体类型、坏 JSON、错形状、超大 payload、坏 Path/Query | 保留 400/413/415/422；5xx rejection 泛化，不泄露输入 |
 | HTTP-05 | handler future 超时、错误响应与 trace | JSON 503，不是空/纯文本；trace 不记录 query、header、body 秘密 |
 | HTTP-06 | 慢请求/慢 header、强制停止、断开连接 | 有进程退出上限测试；不宣称所有情况都返回 JSON 或 graceful |
-| HTTP-07 | 仅测试路由的 handler panic | 验证库内连接错误与顶层面退出的区别；不假定 supervisor 收到请求 panic |
+| HTTP-07 | 仅测试路由的 handler panic | 真实 socket 上收到 JSON 500 且同一连接继续服务；验证请求级 panic 与顶层面退出的区别，不假定 supervisor 收到请求 panic |
 
 ### 12.5 生成工程验收与完成定义
 

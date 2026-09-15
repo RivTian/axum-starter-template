@@ -65,7 +65,7 @@
 | HTTP-04 | API `extractor_errors_keep_framework_statuses_without_leaking_values` | 错误媒体/JSON/形状/体积/Path/Query 状态保留，输入不回显 |
 | HTTP-05 | API `the_outer_request_deadline_uses_the_same_json_error_envelope`；process `trace-redaction` | JSON 503，日志没有 query/header/body 秘密 |
 | HTTP-06 | process `slow-header-shutdown-is-bounded-and-honest`、`disconnected-client-does-not-kill-the-face`；API held request/graceful/abort tests | 实际进程有外层退出 watchdog；正常或强制必须给出一致的清理证据，不要求残缺协议返回 JSON |
-| HTTP-07 | API `a_request_panic_closes_its_connection_not_the_top_level_http_task` | 仅测试 panic 路由的连接结束后，HTTP 仍能处理下一请求；不假定 supervisor 收到 handler panic |
+| HTTP-07 | API `a_request_panic_is_answered_in_the_envelope_and_keeps_its_connection` + `a_handler_panic_takes_the_same_json_error_envelope` | 仅测试 panic 路由在真实 socket 上收到 JSON 500，同一连接继续服务下一请求；不假定 supervisor 收到 handler panic |
 
 ## 生成工程
 

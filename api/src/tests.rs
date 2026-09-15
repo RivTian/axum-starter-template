@@ -1,4 +1,5 @@
 use super::*;
+use crate::contract_tests::{Mode, setup_with};
 use axum::extract::State;
 use axum::routing::get;
 use std::sync::Arc;
@@ -130,52 +131,80 @@ fn aborting_the_outer_serve_task_does_not_reap_the_connection_task() {
     main.shutdown_timeout(BUDGET);
 }
 
+/// Read until the response text a case is waiting for has arrived, rather than
+/// to EOF: these requests are keep-alive, so there is no EOF to wait for.
+async fn read_until(stream: &mut TcpStream, sentinel: &str) -> String {
+    let mut seen = Vec::new();
+    let mut chunk = [0_u8; 512];
+    loop {
+        let read = stream.read(&mut chunk).await.unwrap();
+        assert!(
+            read > 0,
+            "the peer closed before sending {sentinel:?}; got {:?}",
+            String::from_utf8_lossy(&seen)
+        );
+        seen.extend_from_slice(&chunk[..read]);
+        let text = String::from_utf8_lossy(&seen);
+        if text.contains(sentinel) {
+            return text.into_owned();
+        }
+    }
+}
+
+/// A panicking handler is answered, not hung up on, and it costs the caller
+/// neither its connection nor the HTTP face.
+///
+/// The envelope itself is pinned in `contract_tests`; what only a real socket
+/// can show is the other half -- that the 500 reaches the wire ahead of any
+/// reset, that the same connection then serves a second request, and that the
+/// top-level task the supervisor joins never sees the unwind.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_request_panic_closes_its_connection_not_the_top_level_http_task() {
+async fn a_request_panic_is_answered_in_the_envelope_and_keeps_its_connection() {
     timeout(BUDGET, async {
         let root = CancellationToken::new();
-        let entered = Arc::new(Notify::new());
-        let notify = entered.clone();
-        let router = Router::new()
-            .route(
-                "/panic",
-                get(move || {
-                    let notify = notify.clone();
-                    async move {
-                        notify.notify_one();
+        // Assembled through `finish`, so what this observes on the wire is what
+        // a generated service actually sends.
+        let (_publisher, state, _, settings) =
+            setup_with(Mode::Healthy, BUDGET, Duration::from_secs(1));
+        let router = finish(
+            Router::new()
+                .route(
+                    "/panic",
+                    get(|| async {
                         panic!("test-only request panic");
                         #[allow(unreachable_code)]
                         "never returned"
-                    }
-                }),
-            )
-            .route("/alive", get(|| async { "still serving" }));
+                    }),
+                )
+                .route("/alive", get(|| async { "still serving" })),
+            state,
+            &settings,
+        );
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let mut tasks = JoinSet::new();
         tasks.spawn(serve(listener, router, root.child_token()));
-        let mut failed = TcpStream::connect(address).await.unwrap();
-        failed
-            .write_all(b"GET /panic HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        let mut client = TcpStream::connect(address).await.unwrap();
+        client
+            .write_all(b"GET /panic HTTP/1.1\r\nHost: localhost\r\n\r\n")
             .await
             .unwrap();
-        entered.notified().await;
-        let mut bytes = Vec::new();
-        // EOF or reset is allowed. A request panic is not promised a JSON 500.
-        let _ = failed.read_to_end(&mut bytes).await;
+        let failure = read_until(&mut client, "internal server error").await;
+        assert!(failure.starts_with("HTTP/1.1 500"), "{failure:?}");
         assert!(
             tasks.try_join_next().is_none(),
             "request panic escaped to the HTTP face"
         );
-        let mut healthy = TcpStream::connect(address).await.unwrap();
-        healthy
-            .write_all(b"GET /alive HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        // Same socket, no reconnect: the unwind did not take the connection
+        // with it, so a client is not forced to redial after one bad route.
+        client
+            .write_all(b"GET /alive HTTP/1.1\r\nHost: localhost\r\n\r\n")
             .await
             .unwrap();
-        let mut response = String::new();
-        healthy.read_to_string(&mut response).await.unwrap();
-        assert!(response.contains("200 OK") && response.ends_with("still serving"));
+        let alive = read_until(&mut client, "still serving").await;
+        assert!(alive.contains("200 OK"), "{alive:?}");
         root.cancel();
+        drop(client);
         tasks.join_next().await.unwrap().unwrap().unwrap();
     })
     .await

@@ -14,7 +14,8 @@ publish = false
 unsafe_code = "forbid"
 
 [profile.release]
-# The supervisor must observe task panics; abort would bypass that contract.
+# The supervisor must observe task panics and the router must catch handler
+# panics; abort would bypass both contracts.
 panic = "unwind"
 
 [workspace.dependencies]
@@ -51,6 +52,8 @@ serde_path_to_error = "=0.1.20"
 toml = { version = "=1.1.6", default-features = false, features = ["parse", "serde", "std"] }
 # Only app initializes tracing; api uses the subscriber solely in isolated tests.
 tracing-subscriber = { version = "=0.3.23", features = ["env-filter"] }
-tower-http = { version = "=0.7.1", default-features = false, features = ["trace"] }
+# trace: the request span and the completion record. catch-panic: a handler
+# panic is answered from the error table instead of resetting the connection.
+tower-http = { version = "=0.7.1", default-features = false, features = ["catch-panic", "trace"] }
 # Router black-box tests; not a new production middleware abstraction.
 tower = { version = "=0.5.3", default-features = false, features = ["util"] }
