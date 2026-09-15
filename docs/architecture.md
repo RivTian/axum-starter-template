@@ -1107,7 +1107,7 @@ SQLx 或 panic 的原始文字可能包含敏感数据，内部日志也不是�
 | `hooks/pre.rhai` | 从项目名派生环境前缀，校验包名前缀 | M1 改用稳定 Rust 依赖别名，不再生成源码导入名变量；保留长度/合法字符校验和确定性推导 |
 | `hooks/post.rhai` | 将 `.project` 版本重命名并清理模板专用文件 | 移入正确的项目 CI；hook 仅改生成目录，不执行任意外部命令 |
 | `Makefile` | 在树外生成，模板源码不直接运行 cargo；生成结果做 fmt/lint/test | 写操作不能在同一个 GEN_DIR 并发；默认命令无破坏性覆盖 |
-| `Makefile.project` | 简洁的 build/run/fmt/lint/test/check | 所有需要解析依赖的 gate 使用 `--locked`；参数转发文档化 |
+| `Makefile.project` | 简洁的 build/release/fmt/lint/test/check/clean | 所有需要解析依赖的 gate 使用 `--locked`；参数转发文档化 |
 | 名称格式矩阵脚本 | 不只对一个短名字 fmt-clean | 同时验证生成后的 manifest、导入名、环境前缀、二进制名及残留占位符 |
 | `template-sync.py` | 只保留“格式化生成物后回写”的需求，不恢复旧替换实现 | M1 由 `scripts/template.py` 按 Rust 文件原样回写；源码含零命名占位符，无反向替换；回写前拒绝覆盖期间已变动的源码 |
 | `Cargo.lock` 回写流程 | 生成项目可直接 `--locked` | M1 仅映射 workspace 身份，第三方名称/校验和不改；依赖引用补足版本/source 以消歧，实际验证了本地 sqlx-core 与 registry sqlx-core 同名的情况 |

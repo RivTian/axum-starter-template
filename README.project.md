@@ -15,7 +15,12 @@ make check
 cargo run --locked
 # 或显式指定配置：
 cargo run --locked -- --config /absolute/path/service.toml
+make release   # 可部署产物，落在 target/release/
+make clean     # 清除 cargo 构建产物
 ```
+
+`make release` 不带 `-p`：根清单的 `default-members = ["app"]` 已把默认构建目标限定为要交付的那个二进制。
+它与门禁 `make release-check` 不是一回事，后者构建并运行 panic 夹具来验证退出码契约。
 
 默认读取 `./config/service.toml`；可通过 `{{env_prefix}}_CONFIG` 指定路径，显式 `--config` 优先。
 SQLite 相对路径以配置文件所在目录为基准，不以 cwd 或可执行文件位置为基准。

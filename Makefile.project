@@ -2,16 +2,23 @@
 CARGO ?= cargo
 PYTHON ?= python3
 .DEFAULT_GOAL := help
-.PHONY: help preflight build fmt fmt-check lint test release-check service-check check check-process
+.PHONY: help preflight build release clean fmt fmt-check lint test release-check service-check check check-process
 
 help:
-	@echo 'Service: build / fmt / fmt-check / lint / test / release-check / service-check'
+	@echo 'Service: build / release / fmt / fmt-check / lint / test / release-check / service-check / clean'
 	@echo 'check runs the cargo-only gates; check-process adds the real-process ones (POSIX + Python 3.11+).'
 	@echo 'Run cargo run --locked; the actual listen address is printed after startup commits.'
 preflight:
 	@$(PYTHON) -c 'import sys; sys.exit("Python 3.11+ required; set PYTHON=/path/to/python3") if sys.version_info < (3, 11) else None'
 build:
 	$(CARGO) build --workspace --locked
+# The deployable artifact. No -p is needed: the root manifest sets
+# default-members = ["app"], so this builds exactly the binary you ship.
+# release-check is a different thing entirely — it asserts exit-code contracts.
+release:
+	$(CARGO) build --release --locked
+clean:
+	$(CARGO) clean
 fmt:
 	$(CARGO) fmt --all
 fmt-check:
