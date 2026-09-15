@@ -24,9 +24,9 @@
 原始报告：
 
 ```text
-/Users/riotian/.cache/axum-starter-template/workspaces/gen-example-service-l1y3_xa6/verification.json
-/Users/riotian/.cache/axum-starter-template/workspaces/gen-parallel-probe-ohwrqzzh/matrix.json
-/Users/riotian/.cache/axum-starter-template/workspaces/gen-clean-room-service-_ulyhdos/verification.json
+/Users/riotian/.cache/axum-starter-template/workspaces/gen-example-service-xtxyb2az/verification.json
+/Users/riotian/.cache/axum-starter-template/workspaces/gen-parallel-probe-07gko5vc/matrix.json
+/Users/riotian/.cache/axum-starter-template/workspaces/gen-clean-room-service-7m55gg3f/verification.json
 ```
 
 本机日志：`/tmp/axum-unit-check.log`、`/tmp/axum-unit-verify.log`（最后一次完整重跑；期间的中间日志不保留）。
