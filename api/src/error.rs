@@ -211,4 +211,22 @@ mod tests {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert_eq!(body_json(response).await["description"], "Bad Request");
     }
+
+    /// [`panic_response`] is an entry point into the table, not a seventh row:
+    /// what it answers must stay identical to the `Internal` row rather than
+    /// drift into its own wording. Asserting against that row instead of a
+    /// literal is what makes the two impossible to separate.
+    ///
+    /// A `String` payload is the case worth pinning -- `panic!("{input}")`
+    /// builds one out of whatever the handler was holding.
+    #[tokio::test]
+    async fn a_panic_payload_is_answered_from_the_internal_row_and_never_rendered() {
+        let response = panic_response(Box::new(String::from("PRIVATE_TOKEN")));
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(!format!("{:?}", response.headers()).contains("PRIVATE_TOKEN"));
+        assert_eq!(
+            body_json(response).await,
+            body_json(HttpError::Internal.into_response()).await
+        );
+    }
 }

@@ -9,7 +9,7 @@
 | 检查 | 结果 |
 | --- | --- |
 | `make check` / `make verify` | 均通过 |
-| workspace Rust tests | 每组 98 项通过。本次变更贡献 +1：`api` 新增 panic 信封契约测例，原有 panic 测例改为断言 500 与连接存活。97 → 98；与 2026-09-14 段落的 91 之间的差额来自其后的提交，不是本次 |
+| workspace Rust tests | 每组 99 项通过。本次贡献 +2：`api` 的 panic 信封契约测例，以及 `error` 表测里钉住 `panic_response` 走 `Internal` 行的测例；原有 panic 测例改为断言 500 与连接存活。97 → 99；与 2026-09-14 段落的 91 之间的差额来自其后的提交，不是本次 |
 | 维护工具 tests | 26 项通过 |
 | 真实服务进程 | check 与 verify 各 250 场景通过，覆盖 debug/release × 五布局 |
 | 日志 | 每个完整 gate 各 12 场景通过 |
@@ -24,12 +24,12 @@
 原始报告：
 
 ```text
-/Users/riotian/.cache/axum-starter-template/workspaces/gen-example-service-8sey8ab3/verification.json
-/Users/riotian/.cache/axum-starter-template/workspaces/gen-parallel-probe-5op3kzth/matrix.json
-/Users/riotian/.cache/axum-starter-template/workspaces/gen-clean-room-service-8f7_peaj/verification.json
+/Users/riotian/.cache/axum-starter-template/workspaces/gen-example-service-l1y3_xa6/verification.json
+/Users/riotian/.cache/axum-starter-template/workspaces/gen-parallel-probe-ohwrqzzh/matrix.json
+/Users/riotian/.cache/axum-starter-template/workspaces/gen-clean-room-service-_ulyhdos/verification.json
 ```
 
-本机日志：`/tmp/axum-catchpanic-check.log`、`/tmp/axum-catchpanic-verify.log`。
+本机日志：`/tmp/axum-unit-check.log`、`/tmp/axum-unit-verify.log`（最后一次完整重跑；期间的中间日志不保留）。
 
 ---
 
