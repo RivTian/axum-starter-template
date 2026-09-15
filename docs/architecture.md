@@ -229,7 +229,6 @@ axum-starter-template/
 ├── cargo-generate.toml / .gitattributes
 ├── Makefile / Makefile.project
 ├── README.md / README.project.md
-├── project-ci/workflows/ci.yml          # 生成项目 CI 的源，post hook 移入 .github
 ├── config/service.toml                # 生成项目的本地演示配置，不是部署规范
 ├── app/
 │   ├── Cargo.toml / README.md
@@ -1103,9 +1102,9 @@ SQLx 或 panic 的原始文字可能包含敏感数据，内部日志也不是�
 
 | 备份工程件 | 可保留的思想 | 必须重新审查/改造 |
 | --- | --- | --- |
-| `cargo-generate.toml` | 项目名与 crate 前缀分离；模板私有文件不进入生成结果 | 五 crate 清单、Liquid 排除列表、新配置语法、生成项目 CI 来源 |
+| `cargo-generate.toml` | 项目名与 crate 前缀分离；模板私有文件不进入生成结果 | 五 crate 清单、Liquid 排除列表、新配置语法 |
 | `hooks/pre.rhai` | 从项目名派生环境前缀，校验包名前缀 | M1 改用稳定 Rust 依赖别名，不再生成源码导入名变量；保留长度/合法字符校验和确定性推导 |
-| `hooks/post.rhai` | 将 `.project` 版本重命名并清理模板专用文件 | 移入正确的项目 CI；hook 仅改生成目录，不执行任意外部命令 |
+| `hooks/post.rhai` | 将 `.project` 版本重命名并清理模板专用文件 | hook 仅改生成目录，不执行任意外部命令 |
 | `Makefile` | 在树外生成，模板源码不直接运行 cargo；生成结果做 fmt/lint/test | 写操作不能在同一个 GEN_DIR 并发；默认命令无破坏性覆盖 |
 | `Makefile.project` | 简洁的 build/release/fmt/lint/test/check/clean | 所有需要解析依赖的 gate 使用 `--locked`；参数转发文档化 |
 | 名称格式矩阵脚本 | 不只对一个短名字 fmt-clean | 同时验证生成后的 manifest、导入名、环境前缀、二进制名及残留占位符 |
@@ -1120,9 +1119,10 @@ SQLx 或 panic 的原始文字可能包含敏感数据，内部日志也不是�
 ### 11.2 生成产物与配置约定
 
 - 保留 `project-name` / `crate_prefix` 两个概念，其他名字确定性派生；生成器不询问后端、多 runtime 或业务能力开关。
-- 生成项目包含五 crate、自己的 Cargo.lock、简洁 Makefile、README、开发配置和调用项目门禁的 CI。
-- 模板自己的 CI 不原样复制：M1 使用 `project-ci/workflows/ci.yml` 为源，post hook 将整个 `project-ci` 目录移为 `.github`，无需 hook 创建中间目录；
-  Liquid 仅处理 manifest/锁文件和项目 README 白名单，Rust 与项目 CI 原样复制；生成门禁按字节验证没有放错 workflow。
+- 生成项目包含五 crate、自己的 Cargo.lock、简洁 Makefile、README 和开发配置，不附带 CI 定义。
+- 模板自己的 CI 只服务模板自身，留在源码 `.github/`，由 `cargo-generate.toml` 的 ignore 列表挡在生成结果之外；
+  Liquid 仅处理 manifest/锁文件和项目 README 白名单，Rust 原样复制；结构门禁断言生成物没有 `.github`，
+  使那条 ignore 有人看管——否则模板的 `template-check`（含 `cargo install cargo-generate`、`make verify`）泄漏进生成项目不会被任何检查发现。
 - 模板调研文档、生成/回写脚本、hooks 和 `.project` 中间文件不留在生成项目。
 - 生成物不能要求使用者了解实施阶段或未随项目交付的设计章节。源码注释解释当前约束、原因和失败边界；文件/线程/日志/夹具按用途命名。
 - `make gen` 和结构门禁都会执行输出审计；非渲染文件与源按字节对应，渲染文件审查原始模板，避免把用户合法的项目身份误判为历史标签。
@@ -1197,7 +1197,8 @@ M5 维护入口显式使用 `--no-workspace`，防止生成到另一 workspace �
 "生成/工程链"层则由模板自己的 `Makefile` 经 `tooling-test` 与 `check` 运行，不在生成项目内。
 因此只跑 `cargo test` 会得到一个不含任何进程级证据的全绿结果；生成项目的完整门禁是
 `Makefile.project` 的 `make check`（cargo：fmt-check / lint / test / build）加 `make check-process`
-（真进程两项，需 POSIX 与 Python 3.11+），其 CI（`project-ci/workflows/ci.yml`）分两步执行的也是它们。
+（真进程两项，需 POSIX 与 Python 3.11+）。生成项目不附带 CI 定义，这两道门禁由使用者自己接入；
+模板自身 CI 经 `make check` / `make verify` 仍然会在 Linux/macOS 上执行它们。
 拆成两个目标是为了让缺少 POSIX 信号或 Python 3.11+ 的环境仍拿得到 cargo 那一半，而不是在 preflight 整体失败；
 两者必须分别调用，同时传两个目标会让并发 goal 改动同一个工作区。
 §12.2–§12.5 的 LIFE / RT / CFG / TICK / DB / HTTP / GEN 编号是文档编号，不出现在任何测试名或源码中；

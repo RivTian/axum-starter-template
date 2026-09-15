@@ -87,8 +87,6 @@ def export_hygiene(project: Path) -> int:
             source = ROOT / "Makefile.project"
         elif relative == Path("README.md"):
             source = ROOT / "README.project.md"
-        elif relative.parts[0] == ".github":
-            source = ROOT / "project-ci" / Path(*relative.parts[1:])
         else:
             source = ROOT / relative
         require(source.is_file() and not source.is_symlink(), f"exported file lacks an authored source: {relative}")
@@ -322,9 +320,11 @@ def structure(project: Path, name: str, prefix: str, env: dict[str, str]) -> dic
     features = set(active[sqlx["id"]]["features"])
     require(not features & {"any", "postgres", "mysql", "sqlite-load-extension", "sqlite-deserialize", "sqlite-unlock-notify"}, features)
     require("sqlite-bundled" in features, "SQLite bundled feature missing")
-    require((project / ".github/workflows/ci.yml").read_bytes() == (ROOT / "project-ci/workflows/ci.yml").read_bytes(), "project CI was rendered or replaced with template CI")
     require((project / "Makefile").read_bytes() == (ROOT / "Makefile.project").read_bytes(), "incorrect generated Makefile")
-    for absent in ("hooks", "scripts", "docs", "Makefile.project", "README.project.md", "project-ci", "cargo-generate.toml", ".genignore",
+    # No project CI is shipped. .github is listed below because cargo-generate.toml's
+    # ignore list is now the only thing keeping the template's own template-check
+    # workflow out of the result, and nothing else would notice if it stopped working.
+    for absent in ("hooks", "scripts", "docs", "Makefile.project", "README.project.md", ".github", "cargo-generate.toml", ".genignore",
                    "provider", "runtime", "push", "testkit", "web-ui", "Cross.toml", "Dockerfile", "docker-compose.yml", ".claude"):
         require(not (project / absent).exists(), f"template-only file leaked: {absent}")
     for source in rust_sources():

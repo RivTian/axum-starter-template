@@ -170,7 +170,7 @@ M1:runtime-teardown-returned
 - 每次在树外创建唯一目录，无 overwrite、无“当前生成目录”共享指针。
 - clean 仅接受匹配标记的受管目录，拒绝仓库/家目录等危险位置、标记不匹配和 symlink 路径。
 - 工具检查使用显式异常，在 `python -O` 下也保留门禁。
-- 模板 CI 留在源码 `.github/`；项目 CI 从 `project-ci/` 移入生成结果，逐字节核验。
+- 模板 CI 留在源码 `.github/`，不进入生成结果；生成项目不附带 workflow，结构门禁断言其没有 `.github`。
 - 沿用原 `.gitignore` 其余规则，去除旧安装根假设，补 SQLite 文件/边车和 Python 缓存模式。
 
 ## 5. 实际执行的门禁

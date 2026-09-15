@@ -62,7 +62,7 @@ make tooling-test
 
 真实包名展开为 `<prefix>-core` 等；Rust 固定使用 `service_core` 等依赖别名，长名称不影响源码格式。
 锁文件只映射 workspace 身份；包括 `sqlx-core` 同名情况在内，第三方包名、版本、source、校验和不被全局替换。
-模板 CI 与生成项目 CI 分离。后者经 post hook 从 `project-ci` 移入 `.github`，不是把模板的 gen/verify 作业复制出去。
+模板 CI 只服务模板自身，留在源码 `.github/`，不进入生成结果；生成项目不附带 workflow，由结构门禁断言其没有 `.github`。
 `.genignore` 负责递归过滤 Python 缓存/OS 元数据，`template.ignore` 只用于字面路径。
 
 工程复用来源和决策历史集中保存在架构文档；生成项目不继承这些历史背景。

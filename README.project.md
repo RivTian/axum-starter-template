@@ -118,13 +118,13 @@ make release-check
 make service-check
 ```
 
-两者分开是为了让没有 POSIX 信号或 Python 3.11+ 的环境仍拿得到 cargo 那一半，而不是卡在 preflight 全部失败；CI 两步都跑。不要写成 `make check check-process`，并发目标会同时改动同一个工作区。
+两者分开是为了让没有 POSIX 信号或 Python 3.11+ 的环境仍拿得到 cargo 那一半，而不是卡在 preflight 全部失败。不要写成 `make check check-process`，并发目标会同时改动同一个工作区；接入 CI 时也应当是两个先后执行的步骤。
 
 系统 Python 低于 3.11 时，使用 `make check-process PYTHON=/absolute/path/to/python3` 指定满足要求的解释器。
 
 `release-check` 构建并运行 `app/tests/fixtures/release_panic.rs`。它复用实际 TaskSupervisor，检查 panic 被观察、兄弟任务完成收割和 runtime 关闭调用返回；夹具故意返回 1，由检查器判定是否符合预期。
 
-这是生成项目自己的回归测试，不是服务使用示例，因此不放在 `app/examples`。它仍随项目交付，CI 不需要回到模板仓库取测试代码。
+这是生成项目自己的回归测试，不是服务使用示例，因此不放在 `app/examples`。它随项目交付，运行门禁不需要回到模板仓库取测试代码。
 Cargo 中保留名为 `release-panic-fixture` 的 `[[example]]` 编译目标，是为了使用 `cargo build --release` 的真实 panic 策略：普通 test harness 会忽略 profile 中的 panic 设置，不能用 `cargo test --release` 替代这一证明。
 目标设置了 `test = false`、`bench = false`，不由普通测试 harness 执行；`cargo run --locked` 仍只启动服务。
 `service-check` 在 debug/release × 五种布局的实际服务进程中验证端点、信号、启动失败、配置路径/优先级和独立实例。
@@ -171,7 +171,7 @@ WAL 是数据库的持久属性，转换需要 busy_timeout 等不到的独占�
 - 默认只有一个 multi-thread runtime；可选 extra 与任务绑定只在启动时装配，改动必须重启。
 - 任务错误/panic 由顶层监督器处理；请求内部 panic 由 router 的 catch-panic 层就地答复 500，不等于 HTTP 顶层任务退出，也不会送到监督器。
 - `abort` 不能强杀不可中断的线程；若要求硬进程截止，交由外部进程管理者实施。
-- 已在 macOS arm64 验证模板闭环；附带的 CI 定义覆盖 Linux/macOS，但 workflow 文件存在不等于对应远端运行已通过。Windows 的信号/PTY/进程工具链尚未验收。
+- 已在 macOS arm64 验证模板闭环；模板自身 CI 在 Linux/macOS 上执行过这里的门禁。本项目不附带 workflow，接不接 CI 由你决定。Windows 的信号/PTY/进程工具链尚未验收。
 - 慢 header、响应 body 流式发送途中的 panic 或强制关停不保证返回 JSON；外层 HTTP task 被 abort 不是逐连接收割证明。
 - Rust/MSRV 是当前已验证基线，不声称是理论最低版本；线程/超时预算不是生产 SLA。
 
