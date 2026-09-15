@@ -26,5 +26,9 @@ jobs:
             ~/.cargo/git
             target
           key: service-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
-      - name: Workspace, release, logging and real-process contracts
+      # Two ordered steps, never one `make check check-process` invocation: the
+      # generated workspace must not be mutated by concurrent goals.
+      - name: Workspace format, lint, test and build
         run: make check
+      - name: Release, logging and real-process contracts
+        run: make check-process

@@ -1193,8 +1193,11 @@ M5 维护入口显式使用 `--no-workspace`，防止生成到另一 workspace �
 `check_release.py`（构建并运行真 release 二进制，校验受控 panic 的退出码）。cargo 不识别这些文件，
 只有生成项目 `Makefile.project` 的 `service-check` / `logging-check` / `release-check` 会运行它们；
 "生成/工程链"层则由模板自己的 `Makefile` 经 `tooling-test` 与 `check` 运行，不在生成项目内。
-因此只跑 `cargo test` 会得到一个不含任何进程级证据的全绿结果；生成项目的完整门禁是 `make check`
-（`Makefile.project`），其 CI（`project-ci/workflows/ci.yml`）执行的也是它。
+因此只跑 `cargo test` 会得到一个不含任何进程级证据的全绿结果；生成项目的完整门禁是
+`Makefile.project` 的 `make check`（cargo：fmt-check / lint / test / build）加 `make check-process`
+（真进程三项，需 POSIX 与 Python 3.11+），其 CI（`project-ci/workflows/ci.yml`）分两步执行的也是它们。
+拆成两个目标是为了让缺少 POSIX 信号或 Python 3.11+ 的环境仍拿得到 cargo 那一半，而不是在 preflight 整体失败；
+两者必须分别调用，同时传两个目标会让并发 goal 改动同一个工作区。
 §12.2–§12.5 的 LIFE / RT / CFG / TICK / DB / HTTP / GEN 编号是文档编号，不出现在任何测试名或源码中；
 定位用例需按上述入口与文件对照，不能靠搜索 ID。
 

@@ -4,7 +4,7 @@
 
 - 包名前缀：`{{crate_prefix}}`；二进制：`{{crate_name}}`。
 - Rust 内部依赖别名固定为 `service_core` / `service_api` / `service_storage` / `service_worker`，不随包名前缀改变源码排版。
-- Rust 固定为 `1.97.1`；验证脚本需要 Python 3.11+，bundled SQLite 构建需要 C 编译器。
+- Rust 固定为 `1.97.1`；`make check-process` 的验证脚本需要 POSIX 与 Python 3.11+，bundled SQLite 构建需要 C 编译器。
 
 ## 启动、访问与停止
 
@@ -104,7 +104,8 @@ API/worker 不接收 runtime owner 或 executor map；HTTP listener、ticker tim
 ## 验证
 
 ```sh
-make check
+make check          # cargo 门禁：fmt-check / lint / test / build，不需要解释器
+make check-process  # 真进程门禁：release / logging / service，需要 POSIX 与 Python 3.11+
 # 可单独运行：
 make test
 make release-check
@@ -112,7 +113,9 @@ make logging-check
 make service-check
 ```
 
-系统 Python 低于 3.11 时，使用 `make check PYTHON=/absolute/path/to/python3` 指定满足要求的解释器。
+两者分开是为了让没有 POSIX 信号或 Python 3.11+ 的环境仍拿得到 cargo 那一半，而不是卡在 preflight 全部失败；CI 两步都跑。不要写成 `make check check-process`，并发目标会同时改动同一个工作区。
+
+系统 Python 低于 3.11 时，使用 `make check-process PYTHON=/absolute/path/to/python3` 指定满足要求的解释器。
 
 `release-check` 构建并运行 `app/tests/fixtures/release_panic.rs`。它复用实际 TaskSupervisor，检查 panic 被观察、兄弟任务完成收割和 runtime 关闭调用返回；夹具故意返回 1，由检查器判定是否符合预期。
 

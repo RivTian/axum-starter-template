@@ -444,11 +444,16 @@ def basic_check(project: Path, name: str, prefix: str, env: dict[str, str]) -> d
 
 def check(project: Path, name: str, prefix: str, env: dict[str, str]) -> None:
     details = structure(project, name, prefix, env)
-    # Exercise the shipped entry point itself, rather than a lookalike sequence
-    # maintained solely in the template driver. It has one ordered recipe.
-    output = run([os.environ.get("MAKE", "make"), "check", f"CARGO={CARGO}",
-                  f"PYTHON={sys.executable}"], project, env, True)
-    print(output, end="")
+    # Exercise the shipped entry points themselves, rather than a lookalike
+    # sequence maintained solely in the template driver. Two separate ordered
+    # invocations, exactly as the generated CI runs them: passing both goals to
+    # one make would let them mutate the same workspace concurrently.
+    make = os.environ.get("MAKE", "make")
+    output = ""
+    for goal in ("check", "check-process"):
+        part = run([make, goal, f"CARGO={CARGO}", f"PYTHON={sys.executable}"], project, env, True)
+        print(part, end="")
+        output += part
     records = [json.loads(line) for line in output.splitlines() if line.startswith("{")]
     services = [r for r in records if r.get("suite") == "service"]
     logging = [r for r in records if r.get("suite") == "terminal-logging"]

@@ -19,13 +19,22 @@ unsafe_code = "forbid"
 panic = "unwind"
 
 [workspace.dependencies]
-# Stable dependency aliases keep generated Rust source independent of name length.
 service-core = { package = "{{crate_prefix}}-core", path = "core" }
 service-api = { package = "{{crate_prefix}}-api", path = "api" }
 service-storage = { package = "{{crate_prefix}}-storage", path = "storage" }
 service-worker = { package = "{{crate_prefix}}-worker", path = "worker" }
+
 # HTTP/1 system API plus local rejection wrappers; no multipart, CORS or TLS.
-axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "json", "query", "matched-path"] }
+axum = { version = "=0.8.9", default-features = false, features = [
+    "http1",
+    "tokio",
+    "json",
+    "query",
+    "matched-path",
+] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+serde_path_to_error = "=0.1.20"
 # sqlite-bundled avoids the load-extension/deserialization options in sqlx's
 # aggregate `sqlite` feature. macros is required for embedded migrate! on 0.9.
 sqlx = { version = "=0.9.0", default-features = false, features = [
@@ -34,26 +43,27 @@ sqlx = { version = "=0.9.0", default-features = false, features = [
     "migrate",
     "macros",
 ] }
+# Test databases are per-test files, never a shared in-memory pool.
+tempfile = "=3.27.0"
 # Error sources remain private to storage; no driver types in its public API.
 thiserror = "=2.0.20"
 # Features are added at actual consumers, rather than enabling `full` globally.
 tokio = { version = "=1.53.1", default-features = false }
 # CancellationToken's module has no optional feature requirement.
 tokio-util = { version = "=0.7.19", default-features = false }
-# Libraries emit events but never install a subscriber.
-tracing = { version = "=0.1.44", default-features = false, features = ["std"] }
-# Test databases are per-test files, never a shared in-memory pool.
-tempfile = "=3.27.0"
-
-# File config and wire DTOs are separate consumers; no config I/O in core.
-serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = "=1.0.151"
-serde_path_to_error = "=0.1.20"
-toml = { version = "=1.1.6", default-features = false, features = ["parse", "serde", "std"] }
-# Only app initializes tracing; api uses the subscriber solely in isolated tests.
-tracing-subscriber = { version = "=0.3.23", features = ["env-filter"] }
-# trace: the request span and the completion record. catch-panic: a handler
-# panic is answered from the error table instead of resetting the connection.
-tower-http = { version = "=0.7.1", default-features = false, features = ["catch-panic", "trace"] }
+toml = { version = "=1.1.6", default-features = false, features = [
+    "parse",
+    "serde",
+    "std",
+] }
 # Router black-box tests; not a new production middleware abstraction.
 tower = { version = "=0.5.3", default-features = false, features = ["util"] }
+# trace: the request span and the completion record. catch-panic: a handler
+# panic is answered from the error table instead of resetting the connection.
+tower-http = { version = "=0.7.1", default-features = false, features = [
+    "catch-panic",
+    "trace",
+] }
+# Libraries emit events but never install a subscriber.
+tracing = { version = "=0.1.44", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "=0.3.23", features = ["env-filter"] }

@@ -2,10 +2,11 @@
 CARGO ?= cargo
 PYTHON ?= python3
 .DEFAULT_GOAL := help
-.PHONY: help preflight build fmt fmt-check lint test release-check logging-check service-check check
+.PHONY: help preflight build fmt fmt-check lint test release-check logging-check service-check check check-process
 
 help:
-	@echo 'Service: build / fmt / fmt-check / lint / test / release-check / logging-check / service-check / check'
+	@echo 'Service: build / fmt / fmt-check / lint / test / release-check / logging-check / service-check'
+	@echo 'check runs the cargo-only gates; check-process adds the real-process ones (POSIX + Python 3.11+).'
 	@echo 'Run cargo run --locked; the actual listen address is printed after startup commits.'
 preflight:
 	@$(PYTHON) -c 'import sys; sys.exit("Python 3.11+ required; set PYTHON=/path/to/python3") if sys.version_info < (3, 11) else None'
@@ -32,12 +33,17 @@ service-check:
 	  done; \
 	done
 # One ordered recipe avoids concurrent commands mutating a generated workspace.
+# The cargo-only gates need no interpreter, so a platform without POSIX signals
+# or Python 3.11+ still gets them instead of failing at preflight.
 check:
-	$(MAKE) preflight
 	$(MAKE) fmt-check
 	$(MAKE) lint
 	$(MAKE) test
 	$(MAKE) build
+# Real processes, signals, PTY sinks and an actual release artifact. Each driver
+# builds what it needs, so this is runnable on its own.
+check-process:
+	$(MAKE) preflight
 	$(MAKE) release-check
 	$(MAKE) logging-check
 	$(MAKE) service-check
