@@ -48,6 +48,7 @@ Ctrl-C 或 SIGTERM 会先撤销 readiness、取消根 token，再限时收割任
 日志固定采用 **compact 单行 + 结构化字段**，写入 stdout，由 app 统一初始化；不提供多套日志格式开关。
 交互终端自动为日志级别着色、弱化时间戳，并区分字段名与字段值；重定向到文件或管道时不输出 ANSI 样式码。
 `NO_COLOR` 为非空值或 `TERM=dumb` 时禁用颜色；空的 `NO_COLOR` 不禁用。颜色和 `RUST_LOG` 过滤均在启动时确定，不热更新。
+着色判定由 `app/src/telemetry.rs` 的 `ansi_enabled` 单元测试覆盖真值表；没有真 PTY 的端到端门禁，改动 `init()` 的输出格式不会被测试阻拦。
 
 ```sh
 NO_COLOR=1 cargo run --locked          # 显式纯文本
@@ -105,11 +106,10 @@ API/worker 不接收 runtime owner 或 executor map；HTTP listener、ticker tim
 
 ```sh
 make check          # cargo 门禁：fmt-check / lint / test / build，不需要解释器
-make check-process  # 真进程门禁：release / logging / service，需要 POSIX 与 Python 3.11+
+make check-process  # 真进程门禁：release / service，需要 POSIX 与 Python 3.11+
 # 可单独运行：
 make test
 make release-check
-make logging-check
 make service-check
 ```
 
@@ -122,7 +122,6 @@ make service-check
 这是生成项目自己的回归测试，不是服务使用示例，因此不放在 `app/examples`。它仍随项目交付，CI 不需要回到模板仓库取测试代码。
 Cargo 中保留名为 `release-panic-fixture` 的 `[[example]]` 编译目标，是为了使用 `cargo build --release` 的真实 panic 策略：普通 test harness 会忽略 profile 中的 panic 设置，不能用 `cargo test --release` 替代这一证明。
 目标设置了 `test = false`、`bench = false`，不由普通测试 harness 执行；`cargo run --locked` 仍只启动服务。
-`logging-check` 在 debug/release 的实际进程中验证 PTY 自动彩色、`NO_COLOR`（含空值）、`TERM=dumb`、管道和文件纯文本，且逐例检查正常启动/关停字段。
 `service-check` 在 debug/release × 五种布局的实际服务进程中验证端点、信号、启动失败、配置路径/优先级和独立实例。
 故障注入只存在于测试/example，生产主程序没有 panic 开关、测试路由或管理后门。
 真实服务测试还覆盖未完成 HTTP header 与客户端断开后的有界退出；handler panic 被答复成 JSON 500 且不掀掉连接，由 API 中仅测试路由在真实 socket 上验证。

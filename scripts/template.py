@@ -456,15 +456,11 @@ def check(project: Path, name: str, prefix: str, env: dict[str, str]) -> None:
         output += part
     records = [json.loads(line) for line in output.splitlines() if line.startswith("{")]
     services = [r for r in records if r.get("suite") == "service"]
-    logging = [r for r in records if r.get("suite") == "terminal-logging"]
     require({(r["profile"], r["topology"]) for r in services} == {
         (p, t) for p in ("debug", "release") for t in ("main", "worker", "http", "shared", "split")
     } and len(services) == 10, "generated Makefile omitted service process combinations")
-    require({r["profile"] for r in logging} == {"debug", "release"} and len(logging) == 2,
-            "generated Makefile omitted logging profiles")
     require(all(r["result"] == "passed" for r in records), "a generated check did not pass")
     details["service_process_checks"] = services
-    details["terminal_logging_checks"] = logging
     details["migration_rebuild"] = migration_rebuild(project, prefix, env)
     details.update({"project": str(project), "rustc": run(["rustc", "-V"], project, env, True).strip(),
                     "platform": platform.platform(), "python": platform.python_version(),

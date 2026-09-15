@@ -252,7 +252,6 @@ axum-starter-template/
 │   └── tests/                         # cargo 集成测试与进程级驱动并存
 │       ├── runtime_semantics.rs       # 进程内多 runtime / JoinSet 所有权语义探针
 │       ├── check_service.py           # 真进程：端点契约、信号、重载、fail-fast、拓扑矩阵
-│       ├── check_logging.py           # 真 stdout：PTY / 管道 / 文件三种 sink
 │       ├── check_release.py           # 真 release 二进制的受控 panic 与退出码
 │       └── fixtures/release_panic.rs  # 独立 release 回归夹具，不是服务使用示例
 ├── core/
@@ -1063,6 +1062,10 @@ SQLx 或 panic 的原始文字可能包含敏感数据，内部日志也不是�
 - 模板采用固定的 compact 单行结构化字段日志，写入 stdout，不带多个日志格式开关；`RUST_LOG` 是唯一日志过滤环境入口，启动读取，不热更新。
 - 仅 stdout 为终端时自动启用 ANSI 样式；非空 `NO_COLOR` 或 `TERM=dumb` 禁用样式，空 `NO_COLOR` 不禁用。文件/管道始终纯文本。
   颜色策略在 app 启动时捕获，只改变呈现，不改变事件/字段、日志过滤或配置热重载契约；不新增配置字段或依赖。
+  覆盖只到 `ansi_enabled` 的纯函数真值表（`app/src/telemetry.rs`）：没有真 PTY 的端到端门禁，
+  `is_terminal()` 若被误改成 `stderr()`、或 `init()` 换掉输出格式，单元测试都不会失败。
+  这是明知的取舍——固定格式的门禁会惩罚"改成 JSON 结构化日志"这个最可预期的演进方向，
+  因此不保留把格式钉死的检查；需要时由使用者按自己的格式补端到端验证。
 - 全局 subscriber 和 OS 信号处理是进程基础设施例外；它们不是业务状态单例。集成装配函数本身不安装它们。
 - 两实例测试使用私有 subscriber 或显式注入捕获设施；信号、CLI、panic 的进程副作用只在子进程验证。
 - release 保持 unwind：任务 panic 才可能成为 JoinError 被监督器看到，router 的 catch-panic 层也才可能把 handler panic 答成 500。
@@ -1182,20 +1185,19 @@ M5 维护入口显式使用 `--no-workspace`，防止生成到另一 workspace �
 | API | Router + `oneshot`、本地 Storage fake | 不需要真实 DB / TCP / TLS |
 | 存储 | 每测试独立 tempfile SQLite、真实 Migrator、测试 fixture | 不共用固定数据库、不带业务种子表 |
 | 多 runtime | 普通同步 `#[test]` 构建多个真实 multi-thread runtime（`app/tests/runtime_semantics.rs`，进程内） | 不在 `#[tokio::test]` 内直接 Drop 嵌套 Runtime；虚拟时钟不能证明跨 runtime 调度 |
-| 进程与信号 | 子进程、OS 分配端口、启动握手、外层终止回收 guard（`app/tests/check_service.py` / `check_logging.py` / `check_release.py`） | 不在测试进程给自己发信号、不固定端口、不留下失败子进程 |
+| 进程与信号 | 子进程、OS 分配端口、启动握手、外层终止回收 guard（`app/tests/check_service.py` / `check_release.py`） | 不在测试进程给自己发信号、不固定端口、不留下失败子进程 |
 | 生成/工程链 | 临时目录、名称矩阵、clean-room 构建、manifest/feature 解析（`scripts/test_template.py` 与 `scripts/template.py`） | 不只 grep 出单词就当成依赖隔离成立 |
 
 **执行入口不统一；`cargo test` 不是完整门禁。** 上表前六层由 `cargo test --workspace --locked` 覆盖。
 "进程与信号"层由 `app/tests/` 下的 Python 驱动承载：`check_service.py`（5 种 runtime 拓扑 × debug/release，
 覆盖端点与错误信封契约、SIGHUP 重载、慢首部关闭、客户端断开、bind 失败回滚、
 配置/拓扑/存储路径/迁移的 fail-fast、存储初始化期信号）、
-`check_logging.py`（PTY / 管道 / 文件三种 stdout sink × debug/release）、
 `check_release.py`（构建并运行真 release 二进制，校验受控 panic 的退出码）。cargo 不识别这些文件，
-只有生成项目 `Makefile.project` 的 `service-check` / `logging-check` / `release-check` 会运行它们；
+只有生成项目 `Makefile.project` 的 `service-check` / `release-check` 会运行它们；
 "生成/工程链"层则由模板自己的 `Makefile` 经 `tooling-test` 与 `check` 运行，不在生成项目内。
 因此只跑 `cargo test` 会得到一个不含任何进程级证据的全绿结果；生成项目的完整门禁是
 `Makefile.project` 的 `make check`（cargo：fmt-check / lint / test / build）加 `make check-process`
-（真进程三项，需 POSIX 与 Python 3.11+），其 CI（`project-ci/workflows/ci.yml`）分两步执行的也是它们。
+（真进程两项，需 POSIX 与 Python 3.11+），其 CI（`project-ci/workflows/ci.yml`）分两步执行的也是它们。
 拆成两个目标是为了让缺少 POSIX 信号或 Python 3.11+ 的环境仍拿得到 cargo 那一半，而不是在 preflight 整体失败；
 两者必须分别调用，同时传两个目标会让并发 goal 改动同一个工作区。
 §12.2–§12.5 的 LIFE / RT / CFG / TICK / DB / HTTP / GEN 编号是文档编号，不出现在任何测试名或源码中；

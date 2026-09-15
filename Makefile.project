@@ -2,10 +2,10 @@
 CARGO ?= cargo
 PYTHON ?= python3
 .DEFAULT_GOAL := help
-.PHONY: help preflight build fmt fmt-check lint test release-check logging-check service-check check check-process
+.PHONY: help preflight build fmt fmt-check lint test release-check service-check check check-process
 
 help:
-	@echo 'Service: build / fmt / fmt-check / lint / test / release-check / logging-check / service-check'
+	@echo 'Service: build / fmt / fmt-check / lint / test / release-check / service-check'
 	@echo 'check runs the cargo-only gates; check-process adds the real-process ones (POSIX + Python 3.11+).'
 	@echo 'Run cargo run --locked; the actual listen address is printed after startup commits.'
 preflight:
@@ -22,10 +22,6 @@ test:
 	$(CARGO) test --workspace --locked
 release-check:
 	$(PYTHON) app/tests/check_release.py
-logging-check:
-	@set -e; for profile in debug release; do \
-	  $(PYTHON) app/tests/check_logging.py --profile $$profile; \
-	done
 service-check:
 	@set -e; for profile in debug release; do \
 	  for topology in main worker http shared split; do \
@@ -40,10 +36,9 @@ check:
 	$(MAKE) lint
 	$(MAKE) test
 	$(MAKE) build
-# Real processes, signals, PTY sinks and an actual release artifact. Each driver
-# builds what it needs, so this is runnable on its own.
+# Real processes, signals and an actual release artifact. Each driver builds
+# what it needs, so this is runnable on its own.
 check-process:
 	$(MAKE) preflight
 	$(MAKE) release-check
-	$(MAKE) logging-check
 	$(MAKE) service-check
