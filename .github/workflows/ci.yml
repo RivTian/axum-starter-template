@@ -1,0 +1,145 @@
+# 模板仓库自己的 CI。**不进生成结果**（F5：生成结果不带任何 CI 配置，`.github` 在
+# `cargo-generate.toml` 的 `ignore` 里；生成结果的门禁定义只有它自己的 `make check`）。
+#
+# ────────────────────────────────────────────────────────────────────────────
+# 这份文件**从未被执行过**。
+#
+# 写它的这台机器上没有 GitHub Actions runner，所以下面每一条 `run:` 的实际行为都是
+# 推断，不是实测。已知的三处不确定：
+#
+#   1. **Linux 完全没量过。** 模板全部实测数字都在 darwin（macOS 26.x / bash 3.2 /
+#      BSD 用户态）上取得。门禁脚本是按 POSIX + `LC_ALL=C` 写的，`grep`/`sed`/`tar`
+#      的 GNU 与 BSD 差异都被绕开了——但"绕开了"是设计意图，不是证据。
+#      `ubuntu-latest` 出现在下面的矩阵里，正是因为这件事没有证据：它的**第一次红是
+#      信息，不是回归**。修的时候应当先问"是脚本不可移植，还是这条纪律在 Linux 上
+#      本来就该有别的形态"。
+#   2. **`cargo install cargo-generate` 能不能在钉死的 1.95.0 上编过，没验过。**
+#      `rust-toolchain.toml` 把工具链钉在 1.95.0，而 cargo-generate 自己的 MSRV 是它
+#      的事。编不过的话，这里要改成装一份预编译产物，而不是放宽模板的工具链钉子——
+#      钉子是 `structure` 那堆逐字节比较能成立的前提。
+#   3. **`cargo audit` 的调用形状没验过。** 模板根的 `Cargo.toml` 里写着
+#      `{{crate_prefix}}-core`，cargo 解析不了它，所以这里只能让 cargo-audit 直接读
+#      锁文件（`--file`）。那个参数存在、也应当能读一份合法的 `Cargo.lock`，但"模板
+#      的锁文件里本地包名带占位符"这件事它会不会介意，没人试过。
+#
+# 这三条同样写在 `docs/verification.md` 的「无自动化证据」一节里。
+# ────────────────────────────────────────────────────────────────────────────
+#
+# ## 为什么是四个 job 而不是一个
+#
+# `make check` 是模板侧门禁的唯一并集，但有两条**故意**留在它外面（见根 `Makefile`
+# 的头注释）：`verify` 冷编译整棵依赖树，`verify-git` 连着生成三棵树。合进 `check`
+# 会让本地那条从几分钟涨到十几分钟，而一个没人愿意在本地跑的门禁等于只剩 CI 一层。
+#
+# 代价随之而来：本地只跑 `check` 的人碰不到那两条能逮住的问题。所以它们在这里**各有
+# 一格**，而不是"有空再跑"——这一格就是那个代价的接手方。
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # 每周一 03:17 UTC。错开整点：整点那几分钟是 GitHub 定时任务的高峰，排队时间明显更长。
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+# 同一个分支上新的推送取消旧的跑。门禁里最贵的那两条各要十分钟量级，排队没有意义。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # 门禁脚本自己也钉 `LC_ALL=C`（`scripts/lib.sh`）。这里再钉一次是为了让**脚本之外**
+  # 的那些命令（cargo、git）也落在同一个坐标系里——排序规则与字符类的含义都跟着语言
+  # 环境走，而这个仓库的门禁比的是字节。
+  LC_ALL: C
+
+jobs:
+  # ── 模板侧的九条门禁 ──────────────────────────────────────────────────────
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      # 一边红不掐掉另一边：两边的红大概率是不同的原因，而只看到先红的那个会让人
+      # 以为修完一个就完了。
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      # 工具链由 `rust-toolchain.toml` 钉死（1.95.0 + rustfmt + clippy），runner 上的
+      # rustup 会在第一次调 cargo 时自己装。这里不额外用 toolchain action：多一个第三方
+      # 动作，就多一处"版本从哪来"的答案，而钉子只该有一个。
+      - name: toolchain
+        run: |
+          rustup show active-toolchain
+          cargo --version
+          cargo fmt --version
+          cargo clippy --version
+
+      # 版本区间与 `cargo-generate.toml` 里声明的一致（`preflight` 会当场复核这一点，
+      # 装错了它会红并告诉你差在哪）。
+      #
+      # 没有缓存：缓存键要跟住 cargo-generate 的解析结果，而一份因为键写松了而被命中的
+      # 旧二进制，会让门禁**以为**自己验的是声明区间里的那个版本。这里宁可每次多花几
+      # 分钟编译。真要加缓存，先让 `preflight` 的版本断言留在缓存命中之后。
+      - name: install cargo-generate
+        run: cargo install cargo-generate --locked --version '>=0.24, <0.25'
+
+      - name: make check
+        run: make check
+
+  # ── check 之外的第一条：冷编译 + --test 展开路径 ──────────────────────────
+  #
+  # 只跑 macOS：这一格问的是"另一条展开路径 + 空 target"，不是"另一个平台"。平台那个
+  # 问题由上面的矩阵问，而它已经把每一个门禁脚本都执行了一遍。在两个平台上各冷编一次
+  # 依赖树，多花的十几分钟买不到新的信息。
+  verify:
+    name: verify (cold build, --test)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: install cargo-generate
+        run: cargo install cargo-generate --locked --version '>=0.24, <0.25'
+      - name: make verify
+        run: make verify
+
+  # ── check 之外的第二条：--git 安装路径 + 换行符中立性 ─────────────────────
+  verify-git:
+    name: verify-git (--git path, CRLF)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: install cargo-generate
+        run: cargo install cargo-generate --locked --version '>=0.24, <0.25'
+      - name: make verify-git
+        run: make verify-git
+
+  # ── 依赖公告（B-29）─────────────────────────────────────────────────────
+  #
+  # **只在定时与手动触发时跑，不挂在 PR 上。** 理由是这一格的输入不是这个仓库：
+  # 公告库每天都在变，而仓库可以一个字都没改。挂在 PR 上的结果是"有人发布了一条
+  # CVE"表现成"你的 PR 坏了"——改 PR 的人对那条公告无能为力，于是这一格很快会被
+  # 加上 `continue-on-error`，然后就没人看了。
+  #
+  # 分开之后它红的含义是单一的：锁文件里有个包需要升级。
+  audit:
+    name: audit (advisory db)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: install cargo-audit
+        run: cargo install cargo-audit --locked
+      # 只能读锁文件，不能读清单：模板根的 `Cargo.toml` 里是 `{{crate_prefix}}-core`，
+      # cargo 解析不了。锁文件里的本地成员没有 `source` 字段，公告库不会去匹配它们。
+      - name: cargo audit
+        run: cargo audit --file Cargo.lock
