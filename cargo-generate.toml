@@ -1,0 +1,103 @@
+# 渲染面的定义。本文件是「项目名能出现在哪些文件里」这条纪律的唯一执行点。
+#
+# 读这份配置之前先记住一件事：**cargo-generate 把「渲染」和「拷贝」分成了两件事**。
+# `include` / `exclude` 决定一个文件要不要过 Liquid 模板引擎；不在渲染面里的文件是
+# **逐字节拷贝**，不是被丢掉。真正决定"进不进生成结果"的是 `ignore`。
+#
+# 三条判据，缺一条这份配置就失去意义：
+#
+#   1. **`.rs` 一个都不进渲染面。** 这不是省事，是 DP1 的整条收益所在：Rust 源在生成
+#      前后逐字节相同，于是 rustfmt 的结果与项目名无关，"换个名字重跑一次 fmt 看会不会
+#      变"这类门禁从结构上不需要存在。代价是项目名必须被挡在 `.rs` 之外——靠根清单的
+#      `package =` 别名和各成员的 `[lib] name` 两件东西，见根 `Cargo.toml` 开头。
+#      顺带解决一个具体的坑：`core/src/config/expand.rs` 的 `#[error]` 格式串里有
+#      `${{` 和 `{{NAME}}`（Rust 对 `{` 的转义），Liquid 会把它们当模板标记（C-13）。
+#
+#   2. **用 `include` 白名单，不用 `exclude` 黑名单。** 黑名单的默认值是"渲染"，于是
+#      每新增一个文件都默认进入渲染面，靠人记得去补黑名单。白名单的默认值是"逐字节
+#      拷贝"，新增文件默认安全。B 分支用的是黑名单，`exclude` 里只有一条，而它有 36 个
+#      带占位符的 `.rs`——那个比例本身就是黑名单不成立的证据。
+#
+#   3. **`ignore` 里写的是路径，不是通配符。** cargo-generate 0.24.0 的实现是
+#      `p.push(dir); p.push(f)` 然后按 `Path::exists()` 过滤删除（`src/ignore_me.rs`），
+#      **不存在的路径静默跳过**。也就是说这里写错一个名字、或者写一个 `**/*.md`，
+#      不会有任何报错，只会有一个本该被删掉却进了生成结果的文件。所以 `gen` 的审计段
+#      要反过来验一遍"这些路径确实不在生成结果里"（D52 的 `absent` 清单）。
+
+[template]
+# 兼容区间而不是精确版本（修 B-30）。上界是必要的：`include`/`ignore` 的语义由
+# cargo-generate 自己实现，跨 minor 变过一次以上。本模板实测于 0.24.0。
+cargo_generate_version = ">=0.24, <0.25"
+
+# ── 渲染面（白名单）──────────────────────────────────────────────────────────
+# 这里的模式走 gitignore 语法（`GitignoreBuilder`），所以 `**` 可用——与 `ignore`
+# 不同，别把两者的写法记混。
+include = [
+    # 根清单：`[workspace.dependencies]` 里的 `package =` 别名是名字的总闸。
+    "Cargo.toml",
+    # 各成员清单：`name`、`[lib] name`、以及对兄弟 crate 的引用。
+    # 用 `**/` 而不是逐个列（修 B-26）：加一个成员时不需要记得回来改这里。
+    "**/Cargo.toml",
+    # 锁文件里有本地包的真名。它由模板仓库的 `make lock` 生成并随模板发布（DP5）。
+    "Cargo.lock",
+    # 随交付的文档：各层 README 里写了 crate 的真名。
+    "**/README.md",
+    # 生成结果的两个入口文件，由 post.rhai 改名为 `README.md` / `Makefile`。
+    "README.project.md",
+    "Makefile.project",
+]
+
+# ── 不进生成结果 ────────────────────────────────────────────────────────────
+# 逐条写为什么，因为这份名单的每一条都是"模板仓库自己的东西"。
+ignore = [
+    # 设计稿、取证材料、验收记录。生成结果不需要知道模板是怎么被设计出来的（F6 / D56）。
+    "docs",
+    # 门禁脚本。它们验的是"模板生成得对不对"，对生成结果毫无意义，
+    # 而且留着会让人以为生成结果的门禁需要 shell（F5：唯一入口是 `make check`）。
+    "scripts",
+    # 模板仓库自己的门禁入口与说明。生成结果拿到的是 `Makefile.project` / `README.project.md`
+    # 改名后的那两份。
+    "Makefile",
+    "README.md",
+    # 模板仓库把工具链钉死是为了让 `structure` 的逐字节比较可复现；生成结果带上它，
+    # 等于替用户做了一个会过期的决定（DP6）。
+    "rust-toolchain.toml",
+    # 同一条理由的另一半：`* -text` 是为了让"同一个提交在两台机器上字节相同"，
+    # 而需要这条保证的是模板仓库的逐字节比较门禁。生成结果里没有那条门禁。
+    # 注意 `.gitignore` **不在**这份名单里——它讲的是生成项目自己的事（D56）。
+    ".gitattributes",
+    # F5：生成结果不带任何 CI 配置。门禁的唯一定义是它自己的 `make check`。
+    ".github",
+    # 保险条目。cargo 会在 `target/` 里放 `CACHEDIR.TAG`，cargo-generate 0.24.0 据此
+    # 在拷贝与遍历两处都跳过它；但那依赖标记文件存在，而一个被手工清理过的 `target/`
+    # 可能没有。多删一次不花钱。
+    "target",
+    # 同样是保险条目，但它是实测抓出来的，不是想出来的：cargo-generate **不看**
+    # 模板自己的 `.gitignore`（C-138），所以 Finder 在模板目录里留下的 `.DS_Store`
+    # 会原样进每一个从本地路径生成的项目——它已经发生过一次。`ignore` 收字面路径，
+    # 这条只管得住仓库根；子目录里的那些由模板仓库的 `structure` 门禁递归扫。
+    ".DS_Store",
+]
+
+# 这里**没有** `hooks`。它不能进这份名单：cargo-generate 的顺序是
+# pre-hooks → 按 `ignore` 删文件 → 渲染 → post-hooks，把 `hooks` 写进来会让
+# `post.rhai` 在轮到它之前就被删掉。不写也没有代价——0.24.0 在 post-hooks 跑完之后
+# 自己会删掉全部 hook 文件（`src/lib.rs` 的 `remove_dir_files(all_hook_files…)`），
+# 剩下的只有一个空的 `hooks/` 目录，由 post.rhai 收尾。
+#
+# 同理，`cargo-generate.toml` / `.genignore` / `.cargo-ok` 三个文件是**无条件**被删的
+# （`src/ignore_me.rs::get_ignored` 的 `default_ignored`），不需要也不应该写进 `ignore`。
+
+[placeholders]
+# 这里是空的，而且是刻意的。
+#
+# 唯一要问用户的是项目名，而 `--name` / 交互提示已经在问了。再放一个 `crate_prefix`
+# 占位符，等于让用户回答同一个问题两次，然后由我们来处理"两次答得不一样"的情况。
+#
+# `crate_prefix` 由 `hooks/pre.rhai` 从 `project-name` 推导并**校验形状**——
+# 推导的规则和拒绝的理由都写在那里。`--define crate_prefix=…` 仍然可用：pre hook
+# 先看它有没有被显式给定，给定了就只校验、不覆盖。
+
+[hooks]
+pre = ["hooks/pre.rhai"]
+post = ["hooks/post.rhai"]
