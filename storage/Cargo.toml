@@ -1,0 +1,57 @@
+[package]
+name         = "{{crate_prefix}}-storage"
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+publish      = { workspace = true }
+description  = "SQLite 存储实现：唯一入口 open（连接 → 迁移 → 自检）、双池、错误归一化"
+
+# 钉住 lib 目标名，让 Rust 源里的 crate 名与项目名脱钩（理由写在根清单第 1 条纪律）。
+# 本 crate 有 `tests/`，这条在这里不是装饰：没有它，`tests/facade.rs` 只能写展开后的真名。
+[lib]
+name = "service_storage"
+
+[lints]
+workspace = true
+
+[features]
+# 门面可替换性的**肯定式**举证。默认不开：编译闭包纪律管的是**默认** feature 下的那一份，
+# 这个 feature 关着的时候，`test` 门禁里那条 feature 集断言一字不变。
+# 代价写在这里而不是留给"以后注意"：`make check` 必须**额外跑一趟** `--features test-utils`，
+# 否则这个实现会在默认 feature 下静默腐烂，而一个永远不编译的实现举不了任何证。
+test-utils = []
+
+[dependencies]
+
+# 门面与配置类型的来源。`Storage` / `StorageError` / `CloseOutcome` 都住在 `core`——
+# 这正是"门面不泄漏后端"的编译期保证：`core` 不依赖 sqlx，所以门面签名里放不进 sqlx 类型。
+service-core = { workspace = true }
+
+# 唯一的数据库驱动。feature 组合与理由写在根清单里，这里只挑一条重复：
+# `default-features = false` 是必须的——默认集含 `any`，而 `any` 会把多后端抽象编进二进制。
+sqlx = { workspace = true }
+
+# `time`   —— `close` 的绝对 deadline（`timeout_at`）
+# `macros` —— `select!`：启动期的取消优先（`biased`）
+tokio = { workspace = true, features = ["time", "macros"] }
+
+# `CancellationToken`：`open` 全程受它约束，启动期收到停止信号能中断。
+tokio-util = { workspace = true }
+
+# 这里**没有** `tracing`。存储层一条事件都不发：它的失败全部通过 `StorageError` 上抛，
+# 由 `app` 在唯一的调用点记录。理由是别的层拿不到 `StorageError` 的构造权，一旦这一层也
+# 自己打日志，同一次失败就会在日志里出现两次、措辞还不一样——那是回溯事故时最费时间的
+# 一类噪声。代价是 `Migration { stage, hint }` 带不出"第几号迁移"，所以 `hint` 一律写成
+# "去哪儿看"（`_sqlx_migrations` 表），而不是"出了什么事"。
+
+[dev-dependencies]
+
+# 这里**没有** `service-storage`（自依赖）。试过，不行：cargo 识别出自依赖之后会丢掉
+# `package =` 重命名，仍按真名注入，别名不成立。集成用例的 crate 名由上面的 `[lib] name` 管。
+
+# 临时库路径。`TempDb` 刻意不创建文件——"不存在时把库建出来"正是 `open` 的职责之一。
+service-testkit = { workspace = true }
+
+# 契约用例要真的连 SQLite，必须有一个多线程调度器。
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
