@@ -1,0 +1,32 @@
+[package]
+name         = "{{crate_prefix}}-testkit"
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+publish      = { workspace = true }
+description  = "测试夹具：日志捕获与临时安装根。dev-only，不进任何二进制"
+
+# 钉住 lib 目标名，让 Rust 源里的 crate 名与项目名脱钩（理由写在根清单第 1 条纪律）。
+[lib]
+name = "service_testkit"
+
+[lints]
+workspace = true
+
+[dependencies]
+
+# 唯一允许的成员边。用处是实打实的：`TempInstallRoot` 的目录布局
+# **由 `core::paths` 自己算出来**，而不是在夹具里再抄一份 `config/` `data/`。
+# 抄一份的代价要到"生产改了布局、夹具没改、测试仍然绿"那天才结算。
+service-core = { workspace = true }
+
+# 记录面：只用 `Event` / `Metadata` / `Level` 这几个类型，这个 crate 自己不产生事件。
+tracing = { workspace = true }
+
+# 订阅面。整个 workspace 里只有 `app` 和 `testkit` 拿得到它——`testkit` 拿到它正是为了让**其余五层
+# 拿不到**：日志捕获的机制集中在这里一份，别的 crate 的测试模块里就没有理由 `use` 它。
+tracing-subscriber = { workspace = true }
+
+# 临时目录。自带 drop 清理；门禁会反复跑，留垃圾会拖垮下一轮。
+tempfile = { workspace = true }
