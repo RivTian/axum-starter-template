@@ -1,0 +1,81 @@
+[package]
+name         = "{{crate_prefix}}-app"
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+publish      = { workspace = true }
+description  = "进程装配层：命令行、配置引导、runtime 拓扑、零全局态装配、启动提交门、关停编排"
+
+# 钉住 lib 目标名。`app` 有 `tests/`，这条在这里是硬需求：
+# 编排层用例要 `use service_app::run`，没有这一行就只能写展开后的真名。
+[lib]
+name = "service_app"
+
+# 全仓库唯一的可执行目标。
+#
+# 名字直接取项目名，因为它是**环境变量前缀的唯一来源**：`main.rs` 里的
+# `env!("CARGO_BIN_NAME")` 大写之后就是 `<PREFIX>_CONFIG` 的那个 `<PREFIX>`。
+# 于是 Rust 源里不需要出现任何项目名字面量——改名字只改这里一处。
+[[bin]]
+name = "{{crate_prefix}}"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+# ── 邻接表里 `app` 的四条出边────────────────────────────────────────
+# `app` 是唯一允许同时看见这四层的地方；反向的任何一条边都被门禁禁止。
+service-core    = { workspace = true }
+service-storage = { workspace = true }
+service-worker  = { workspace = true }
+service-api     = { workspace = true }
+
+# ── 进程事实：只有这一层能拿 ──────────────────────────────────────────────
+# `rt-multi-thread`：全进程唯一建 runtime 的地方。
+# `signal`：全进程唯一订阅信号的地方（`src/signals.rs`）。
+# `macros`：`select!` —— 提交门与主编排循环的骨架（每一处首行都写 `biased;`）。
+# `time`：关停预算的 `timeout`/`sleep`。
+# `net`：`TcpListener::from_std` —— 监听套接字在 boot 阶段同步 `bind`，再在目标
+#        runtime 的 future 内部转成 tokio 的。
+# `rt` 与 `sync` 由 `core`/`api` 的声明并入，这里不重复写（Cargo 对 feature 取并集）。
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "signal",
+    "macros",
+    "time",
+    "net",
+] }
+
+# 根 `CancellationToken` 的持有者。级联取消从这里发起。
+tokio-util = { workspace = true }
+
+# `os_signal_stream()` 的返回类型要实现 `Stream`。只要 trait，不要组合子。
+futures-core = { workspace = true }
+
+# ── 配置管线在进程侧的三块（`core` 一块都不认识）────────────────────────────
+# 解析 TOML。
+toml = { workspace = true }
+# 反序列化失败时给出字段路径，而不是一行字节偏移。
+#
+# 这里**没有** `serde`。初稿写过，理由是"`deserialize` 这个动作发生在本 crate"——
+# 但 `serde_path_to_error::deserialize` 是自由函数，`app` 里没有任何一处需要把 `serde`
+# 的名字写出来（`Config` 的派生在 `core`）。`unused_crate_dependencies` 当场指出了这点。
+# 一条"用得上但写不出来"的依赖，就是那种纯为观感加的依赖。
+serde_path_to_error = { workspace = true }
+
+# ── 遥测 ────────────────────────────────────────────────────────────────────
+# 产生事件。
+tracing = { workspace = true }
+# 安装 subscriber。全仓库只有 `app` 与 `testkit` 能依赖它。
+tracing-subscriber = { workspace = true }
+
+# 启动失败与关停失败的错误样板。`#[from]` 只用于本 workspace 内部类型。
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# 编排层用例的夹具：假安装根、日志捕获、临时库。
+service-testkit = { workspace = true }
+# 关停预算的用例要把时钟拨快，否则一条「30 秒宽限期」的断言就要真跑 30 秒。
+tokio = { workspace = true, features = ["test-util"] }
