@@ -1,0 +1,96 @@
+[package]
+name         = "{{crate_prefix}}-api"
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+publish      = { workspace = true }
+description  = "HTTP 展示层：统一错误信封、包装提取器、系统端点、自实现 handler 超时"
+
+# 钉住 lib 目标名，让 Rust 源里的 crate 名与项目名脱钩（理由写在根清单第 1 条纪律）。
+# 本 crate 有 `tests/`，这条在这里不是装饰：没有它，`tests/contract.rs` 只能写展开后的真名。
+[lib]
+name = "service_api"
+
+[lints]
+workspace = true
+
+[dependencies]
+
+# 门面、配置、生命周期、任务面词汇的来源。这一层**只有**这一条成员边。
+# 邻接表里 `api → storage` 是明令禁止的：展示层持有的是 `Arc<dyn core::Storage>`，
+# 而 `core` 不依赖 sqlx——于是"门面不泄漏后端"由依赖图强制，不靠人自觉。
+service-core = { workspace = true }
+
+# HTTP 框架。默认 feature 保留（`json` / `query` / `form` / `matched-path` / `original-uri`）：
+# 它们是写 handler 的基本词汇，关掉只会让使用者在加第一个业务路由时被迫改根清单。
+axum = { workspace = true }
+
+# `TraceLayer`（请求级 span）与 `CatchPanicLayer`（handler panic 不杀进程，配套 release 下的 unwind）。
+#
+# **没有 `limit`。** 根清单原来把它写成"`DefaultBodyLimit` 的底座"——实测不成立：
+# `DefaultBodyLimit` 是 axum-core 0.5.6 自己的东西，靠 `RequestExt::into_limited_body`
+# 把 body 包进 `http_body_util::Limited`，超限得到 `LengthLimitError`（413）。整条路径与
+# tower-http 无关。`unused_crate_dependencies` 只看 crate，看不见多余的 feature，所以这一条
+# 只能靠人删——"不为了好看而加依赖 / feature"这条纪律就是冲这种情况写的。
+tower-http = { workspace = true, features = ["trace", "catch-panic"] }
+
+# `time` —— `tokio::time::timeout`：`handler_timeout` 中间件
+# `net`  —— `TcpListener::from_std`：在目标 runtime 的 future 体内完成注册
+#
+# 这里**不**声明 `rt`，但也不假装这是一道防线：axum 的 `serve` feature 自己就把 `tokio/rt`
+# 拉了进来，cargo 的 feature 统一之后本层照样能 `spawn`。写成这样只是在说明"我们自己用到的
+# 是哪两块"——`worker` 那条"少给一个 feature 比写一条纪律可靠"在这一层**不成立**，不能照抄。
+tokio = { workspace = true, features = ["time", "net"] }
+
+# `CancellationToken`：`with_graceful_shutdown` 的信号源（根 token 级联下来的取消）。
+tokio-util = { workspace = true }
+
+# 信封与系统端点响应体的 `Serialize`，以及包装提取器上的 `DeserializeOwned` 约束。
+serde = { workspace = true }
+
+# 响应体序列化。**不用 `axum::Json` 作为响应类型**：那是 `clippy.toml` 的 `disallowed-types` 名单上的
+# 同一个类型，用它就要在 `response.rs` 再开一个 `allow`。手写一层反而换来两样东西：
+# content-type 是我们自己写死的，序列化失败有一条显式的兜底路径。
+serde_json = { workspace = true }
+
+# 这一层**没有** `thiserror`。别的层都有，这里刻意不加：`HttpError` 是个字段全私有的
+# 结构体（见 `error.rs` 的"为什么不是枚举"），`Display` 要拼的是 `message` 和 `code` 两个
+# 私有字段，派生宏在这种形状上省不下几行，却要多一条依赖——"不为了好看加依赖"。
+
+# 这一层**要**打日志，理由与 `storage` 那条"一条事件都不发"不冲突，而是同一条原则的另一面：
+# **凡是响应里不能说的，日志里必须说。** 5xx 的 description 只能是 `&'static str`，
+# 于是真正的原因（错误链、panic 负载、accept 循环的 io 错误）在响应里一律被扔掉——不在这里
+# 记，就在任何地方都记不到。发事件的点因此是可以逐个点名的：5xx 的构造处、panic 捕获处、
+# 面退出处。除此之外这一层不发任何事件，请求级的 span 由 `TraceLayer` 负责。
+tracing = { workspace = true }
+
+[dev-dependencies]
+
+# 契约测试走 `ServiceExt::oneshot`，不起真实端口：路由树、中间件栈、信封三样都能在内存里验完，
+# 而绑端口会把"端口被占"变成一类随机失败。面的生命周期用例才需要真 socket。
+tower = { workspace = true }
+
+# `serde_json` **不在这里重复声明**：它已经是普通依赖，集成测试目标照样链得到。
+# 重复声明不会报错，但会让人以为"测试里用的是另一份"——而 `unused_crate_dependencies`
+# 是按目标算的，多一条 dev 声明反而多一处要交代的地方。
+
+# 用例要自己造 `AppState` 的四件零件，其中 `LogCapture` 用来断言 5xx 确实留下了日志。
+service-testkit = { workspace = true }
+
+# `rt-multi-thread` —— 面的生命周期用例要真的 accept 一次连接，必须有多线程调度器
+# `macros`          —— `#[tokio::test]`
+# `io-util`         —— `AsyncWriteExt` / `AsyncReadExt`：那条用例手写一行 HTTP/1.1 发进 socket。
+#                      模板里没有 HTTP 客户端，也不打算为一条用例引一个。手写请求行反而
+#                      更诚实：它证明的是"这个端口上真的有人在应答"，与路由树无关。
+# `time` / `net`    —— 与普通依赖同源，见上。
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "macros",
+    "io-util",
+    "time",
+    "net",
+] }
+
+# 用例要自己造一个根 token 来验级联取消。
+tokio-util = { workspace = true }
