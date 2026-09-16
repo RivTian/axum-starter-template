@@ -1,0 +1,123 @@
+# 本项目的门禁。
+#
+# ## 唯一入口
+#
+# `make check` 是**全部**门禁的并集，而且是唯一的那个并集：本文件里的每一条检查都在它
+# 的依赖链上。把最有价值的那条检查拆成一个需要人另行调用的目标，等于没有任何东西会自动
+# 跑它——它可以在半年里一次都没有执行过，而 CI 全程是绿的。一个需要人记得的门禁不是门禁。
+#
+# 加检查的方式只有一种：挂到 `fmt` / `lint` / `test` 三条之一里面去。如果它哪条都不属于，
+# 那要先想清楚它到底在验什么，而不是新开一个目标。
+#
+# ## 为什么只有三条
+#
+# 三条各自对应一个**不同的失败类别**，而不是三个工具：
+#
+#   fmt  —— 形态。人读代码时的噪声。
+#   lint —— 编译器能看出来但默认不拦的东西（`unwrap`、`await` 里持锁、未用的依赖）。
+#   test —— 行为，**以及结构**。后半句是这个模板的特点：二十条结构纪律（分层邻接表、
+#           公共出口清单、`biased` 取消优先、`allow` 的作用域……）写成了普通的集成测试,
+#           住在 `testkit/tests/discipline.rs`。
+#
+# 把结构检查写成 Rust 测试而不是这里的 shell，是一个有代价的选择，代价与理由写在那个
+# 文件的头注释里。对这份 Makefile 的直接后果是：它短到可以一眼读完，而门禁的依赖面只有
+# Rust 工具链本身——没有 `grep -P`、没有 `sed -i`、没有 Python。
+#
+# ## 版本号与 `--locked`
+#
+# `lint` 和 `test` 都带 `--locked`：门禁不允许悄悄改 `Cargo.lock`。代价是**改完
+# `[workspace.package].version` 必须跟着跑一次 `make relock`**，否则下一次 `make check`
+# 会立刻红在一个与你的改动看起来毫不相干的地方。这不是缺陷，是 `--locked` 的定义；
+# 写在这里是因为它是第一天就会踩到的那种。
+
+CARGO ?= cargo
+
+# 存储的 `test-utils` 那趟要用**带包名的** feature 写法。裸的 `--features test-utils`
+# 在多成员 workspace 里会被 cargo 拒绝（它无法判断这个 feature 属于哪个包）。
+STORAGE_PKG  := {{crate_prefix}}-storage
+STORAGE_FEAT := $(STORAGE_PKG)/test-utils
+
+.PHONY: help check fmt lint test relock run dev-config
+
+.DEFAULT_GOAL := help
+
+help:
+	@echo 'make check      —— 全部门禁（fmt + lint + test）。提交前跑这一条就够。'
+	@echo 'make run        —— 本地起服务。'
+	@echo 'make dev-config —— 把配置文件放到开发期该在的位置，起服务之前先改它。'
+	@echo 'make relock     —— 改过 [workspace.package].version 之后刷新 Cargo.lock。'
+	@echo ''
+	@echo '单独跑某一条：make fmt / make lint / make test。'
+	@echo 'check 是这三条的并集——没有第四条需要你记得单独跑的检查。'
+
+check: fmt lint test
+	@echo ''
+	@echo '✓ check 通过：fmt + lint + test 三条全绿。'
+
+fmt:
+	@echo '── fmt ────────────────────────────────────────────────'
+	@echo '   · rustfmt 形态一致（全部成员）'
+	$(CARGO) fmt --all --check
+
+lint:
+	@echo '── lint ───────────────────────────────────────────────'
+	@echo '   · clippy，警告即错误'
+	@echo '   · 覆盖 --all-targets：lib / bin / tests / benches 全算'
+	@echo '   · workspace lint 策略：unsafe 禁用、unwrap/expect 受限、'
+	@echo '     await 期间不得持锁、未使用的依赖即错误'
+	$(CARGO) clippy --workspace --all-targets --locked -- -D warnings
+
+test:
+	@echo '── test ───────────────────────────────────────────────'
+	@echo '   · 全部单元测试与集成测试'
+	@echo '   · 结构纪律 20 条（testkit/tests/discipline.rs）：'
+	@echo '     分层邻接表相等、公共出口与 README 两侧相等、单一可执行入口、'
+	@echo '     select! 取消优先、allow 的作用域、事件名与消息、进程边界无判断'
+	@echo '   · 存储门面的可替换性：再跑一趟 --features $(STORAGE_FEAT)'
+	@echo '   · doctest 计数必须为 0'
+	$(CARGO) test --workspace --locked
+	$(CARGO) test -p $(STORAGE_PKG) --features $(STORAGE_FEAT) --locked
+	@echo '   检查 doctest 计数……'
+	@if $(CARGO) test --doc --workspace --locked 2>&1 | grep -q 'running [1-9]'; then \
+		echo ''; \
+		echo '✗ 发现 doctest。本项目的 doctest 计数必须是 0。'; \
+		echo '  理由：doctest 里的 `use` 要写 crate 的真名，而真名随项目名变——'; \
+		echo '  示例代码一旦能跑，就等于把项目名钉进了文档。'; \
+		echo '  改法：把示例的围栏从 ```rust 改成 ```text。标 ```ignore 不够，'; \
+		echo '  它仍然被计成一条 doctest（只是不跑）。'; \
+		exit 1; \
+	fi
+	@echo '   doctest 计数 0 ✓'
+
+relock:
+	$(CARGO) update --workspace
+	@echo ''
+	@echo '✓ Cargo.lock 已刷新。把它一起提交——门禁跑的是 --locked。'
+
+run:
+	$(CARGO) run
+
+# 安装根是**可执行文件所在的目录**，不是 cwd、也不是仓库根。开发期跑 `cargo run`，
+# 可执行文件在 `target/debug/`，于是配置和数据也在那里。这条纪律的收益写在 README 里；
+# 它的代价就是这个目标存在的理由——第一次想改端口的人，得先知道该改哪个文件。
+#
+# 这里直接抄 `app/assets/service.toml`，而不是"跑一次进程让它自己写"：进程写模板发生在
+# 启动路径的中段，想在启动**之前**改配置的人拿不到那个时机。抄的是同一份文件——二进制里
+# 内嵌的就是它（`include_str!`），两者逐字节相同，不存在第二个真值。
+#
+# 已存在就不覆盖。一个会把你改好的配置默默换回出厂值的命令，比没有这个命令更糟。
+DEV_CONFIG := target/debug/config/service.toml
+
+dev-config:
+	@mkdir -p target/debug/config
+	@if [ -f $(DEV_CONFIG) ]; then \
+		echo "已存在，未改动：$(DEV_CONFIG)"; \
+	else \
+		cp app/assets/service.toml $(DEV_CONFIG); \
+		echo "已写出：$(DEV_CONFIG)"; \
+	fi
+	@echo ''
+	@echo '开发期的安装根是 target/debug/，所以数据库会落在 target/debug/data/。'
+	@echo '两件事值得先知道：'
+	@echo '  · cargo clean 会把配置和数据一起删掉。'
+	@echo '  · cargo run --release 的安装根是 target/release/，那是另一份配置、另一个库。'
