@@ -1,0 +1,192 @@
+# workspace 根清单。
+#
+# 两条贯穿全文的纪律：
+#   1. 项目名只出现在**清单**里，Rust 源码一律写固定名（`service_core::…`）。
+#      这样 `.rs` 在生成前后逐字节相同，rustfmt 的名字依赖从结构上消失。
+#      落地要两件东西，缺一不可：
+#        - 这里的 `package =` 别名——管**跨 crate**的引用；
+#        - 各成员清单里的 `[lib] name`——管**本 crate 自己的集成测试**。
+#      后者是实测补上的：`tests/` 下的目标按 **lib 目标名**链接被测 crate，而不是按
+#      `[workspace.dependencies]` 的别名；不钉住 lib 名，集成用例就只能写展开后的真名。
+#      "那就让它 dev-depend 自己" 这条路走不通——cargo 认出自依赖后会把 `package =`
+#      重命名丢掉，仍然按真名注入（实测：`--extern demo_storage`，别名不成立）。
+#   2. 每条第三方依赖都写清「为什么需要它」与「谁能依赖它」。没有理由的依赖等于没有人守的边。
+
+[workspace]
+resolver = "3"
+members = ["core", "storage", "worker", "api", "app", "testkit"]
+
+# resolver = "3" 需要 edition 2024 的工具链；实测于 cargo 1.95.0。
+
+[workspace.package]
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.95"
+license      = "MIT OR Apache-2.0"
+publish      = false
+
+[workspace.dependencies]
+
+# ── 本 workspace 成员：别名即防线 ────────────────────────────────────────────
+# 别名把「项目叫什么」挡在 Rust 源之外。成员之间只能按分层邻接表连边，多一条少一条都红
+# ——相等比较，不是包含比较，因为"包含"放得过新增边。判据落在 `make check` 的 `test` 门禁
+# （`testkit/tests/discipline.rs` 的 `the_dependency_edges_equal_the_layering_table`）。
+#
+# `path` 后面**不补空格对齐**：它跟在一个长度随项目名变化的字段后面，补齐之后列会随名字
+# 一起歪。左边那一列的对齐是安全的——别名是固定字符串，永远不随名字变。
+service-core    = { package = "{{crate_prefix}}-core", path = "core" }
+service-storage = { package = "{{crate_prefix}}-storage", path = "storage" }
+service-worker  = { package = "{{crate_prefix}}-worker", path = "worker" }
+service-api     = { package = "{{crate_prefix}}-api", path = "api" }
+service-testkit = { package = "{{crate_prefix}}-testkit", path = "testkit" }
+
+# ── 运行期基座 ──────────────────────────────────────────────────────────────
+
+# 任务面与时间的唯一来源。
+# feature 按层拆：`core`/`worker` 只要 `rt`+`sync`+`time`（构造任务、取消、定时），
+# `rt-multi-thread` 与 `signal` 只有 `app` 能开——多线程调度器和信号都是进程事实，
+# 让库层拿到它们就等于允许库层自己建 runtime。
+tokio = { version = "1.53.1", default-features = false }
+
+# `CancellationToken`：根 token → child token 的级联取消。
+# 不用自造的 `AtomicBool`+`Notify`：DropGuard 与 `cancelled()` 的 future 语义要自己写对很难。
+tokio-util = { version = "0.7.19", default-features = false }
+
+# `os_stop_stream() -> impl Stream<Item = StopRequest>` 的 `Stream` trait 来源。
+# 只要 trait 定义，不要 `futures` 全家桶——组合子我们一个都不用。
+futures-core = { version = "0.3.34", default-features = false }
+
+# ── HTTP 展示层（只有 `api` 能依赖）────────────────────────────────────────
+axum = { version = "0.8.9" }
+# 默认 feature 保留 `form`/`query`/`json`/`matched-path`/`original-uri`：
+# 它们是写 handler 的基本词汇，关掉只会让用户在加第一个业务路由时被迫改根清单。
+# 与「不预铺没有消费者的东西」不冲突——这是 axum 自己的 API 面，不是我们预铺的抽象。
+
+# `TraceLayer`（请求级 span）、`CatchPanicLayer`（handler panic 不杀进程，配套 release 的 unwind）。
+#
+# **不开 `limit`**。它看上去像「`DefaultBodyLimit` 的底座」，实测不是：
+# `DefaultBodyLimit` 是 **axum-core** 的东西，靠 `RequestExt::into_limited_body()` 走
+# `http_body_util::Limited`，超限的 `LengthLimitError` 被 downcast 成 413。整条路径与
+# tower-http 无关——开着它只是多编一个没人 `use` 的模块。
+#
+# **不开 `timeout`**：tower-http 0.7.1 的超时响应是空 body、无 content-type，会绕过统一的
+# 错误信封；且 `TimeoutLayer::new` 自 0.6.7 起弃用，在 `-D warnings` 下直接红。
+# 超时由 `api/src/middleware/timeout.rs` 自实现，只用 axum + tokio。
+#
+# 这两条是同一件事的两面：**一个 feature 要么有确切的消费点，要么不开**。`limit` 是
+# 「以为有消费点」，`timeout` 是「有消费点但那个实现是错的」。
+tower-http = { version = "0.7.1", default-features = false, features = ["trace", "catch-panic"] }
+
+# 只在 `api` 的 dev-dependencies 里出现：契约测试走 `ServiceExt::oneshot`，不起真实端口。
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
+
+# ── 存储（只有 `storage` 能依赖）───────────────────────────────────────────
+# 单后端最小编译闭包。逐条说明本组 feature：
+#   default-features = false —— 默认集含 `any`，`any` 会把多后端抽象编进二进制，而这里只要一个后端。
+#   sqlite-bundled          —— 自带 SQLite C 源码编译，生成结果不依赖宿主装没装 libsqlite3。
+#                              注意 `bundled` 是 `libsqlite3-sys` 的 feature，不是 sqlx 的。
+#   runtime-tokio           —— 与本模板唯一的 runtime 对齐。
+#   migrate                 —— 迁移执行器。
+#   macros                  —— `sqlx::migrate!` 由它提供；不开则该宏根本不存在（实测报 E0433）。
+#                              代价是 +6 个编译期依赖包，是「迁移随二进制走」的必要成本。
+# 解析后依赖图只含 sqlx / sqlx-core / sqlx-sqlite / libsqlite3-sys，无 postgres / mysql / any。
+sqlx = { version = "0.9.0", default-features = false, features = [
+    "sqlite-bundled",
+    "runtime-tokio",
+    "migrate",
+    "macros",
+] }
+
+# ── 配置 ────────────────────────────────────────────────────────────────────
+serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
+
+# 配置文件格式。只有 `app` 能依赖：读文件是进程事实，`core` 只定义类型与三段式管线，
+# 不关心配置从哪种格式来。
+#
+# 关掉的是 `display`：本模板从不把 `Config` 写回 TOML。缺省配置文件是一份内嵌的
+# **手写**模板（带注释、带取舍说明），序列化出来的版本只有键值、没有一句解释，而运维
+# 要看的正是那些解释。少一个 writer 也就少一条"配置能被程序改写"的暗示。
+toml = { version = "1.1.6", default-features = false, features = [
+    "parse",
+    "serde",
+    "std",
+] }
+
+# 反序列化失败时给出**字段路径**而不是只给一行 offset。
+# 配置错误是用户最常见的第一类失败，「哪一个键写错了」必须直接可读。
+serde_path_to_error = { version = "0.1.20" }
+
+# `Duration` 的人类可读表示（`30s` / `5m`）。不引入它就得让用户写毫秒整数，
+# 而毫秒整数是配置里最容易写错三个零的地方。
+humantime-serde = { version = "1.1.1" }
+
+# 响应体序列化（`api`）。
+serde_json = { version = "1.0.151" }
+
+# ── 错误 ────────────────────────────────────────────────────────────────────
+# 只用它生成 `Display`/`Error` 样板。
+# `#[from]` **仅限本 workspace 内部的错误类型**：第三方错误一律手写 `From`，
+# 否则一个上游库换个错误类型就能悄悄改变我们的公共错误面。
+thiserror = { version = "2.0.20" }
+
+# ── 遥测 ────────────────────────────────────────────────────────────────────
+# 记录面：所有层都可以依赖，因为它只产生事件、不决定事件去哪。
+tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"] }
+
+# 订阅面：**只有 `app` 与 `testkit` 能依赖**。
+# 库层一旦能装 subscriber，就能在被别人 use 的时候擅自改全局日志——这是库设计里最难排查的一类副作用。
+# `ansi` 不是为了好看而开：不开它的话 `with_ansi(true)` 会**panic**，
+# 于是"着色只由 stderr 是不是终端决定"这条规则就带着一颗地雷——
+# 在终端里跑起来的那一刻炸。要么开它，要么彻底删掉着色代码；这里选前者，
+# 因为开发期读日志时按级别着色是 stderr 上唯一真正省时间的东西。
+tracing-subscriber = { version = "0.3.23", default-features = false, features = [
+    "std",
+    "fmt",
+    "ansi",
+    "env-filter",
+    "json",
+    "registry",
+] }
+
+# ── 测试夹具（dev-only，不进任何二进制）──────────────────────────────────────
+# 临时目录 / 临时库 / 假安装根。自动清理是关键：门禁会反复生成，留垃圾会拖垮下一轮。
+tempfile = { version = "3.27.0" }
+
+# ── lint 集中声明─────────────────────────────────────────────────────
+# 只在根声明一次，每个成员写 `[lints] workspace = true`。
+# 各 crate 里**不允许**出现 crate 级 `#![allow(...)]`：那等于给自己发豁免而没人知道。
+# 要豁免就写在最小作用域上并附理由。
+[workspace.lints.rust]
+unsafe_code                   = "forbid"
+# 僵尸依赖探测器：清单里写了却没人 `use` 的依赖会被编译器指出来。
+# 这条是邻接表门禁的编译期同伴——门禁管「不该有的边」，它管「该删没删的边」。
+unused_crate_dependencies     = "warn"
+unused_extern_crates          = "warn"
+missing_debug_implementations = "warn"
+# `rust_2018_idioms` 是一个 lint **组**，不是单条 lint。组与单条同在默认优先级 0 时，
+# cargo 无法确定谁覆盖谁，会直接判错（`lint group ... has the same priority`）。
+# 给组一个更低的优先级，等于声明"组先铺开，单条在它之上覆盖"——这正是我们要的顺序。
+rust_2018_idioms              = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+# `unwrap`/`expect`/panic 在库层是把失败藏进运行期。`app` 的启动路径需要时在**最小作用域**豁免。
+unwrap_used             = "warn"
+expect_used             = "warn"
+panic                   = "warn"
+# 关停编排里最容易出现的一类真 bug：在持锁 / 持 borrow 的状态下跨 await。
+await_holding_lock      = "deny"
+# 整数溢出与截断在预算计算（`d_n = min(T, d_{n-1} + budget)`）里会变成"立刻超时"。
+cast_possible_truncation = "warn"
+cast_sign_loss           = "warn"
+# 文档纪律：`# Errors` / `# Panics` 缺失说明公共 API 的失败面没写清。
+missing_errors_doc       = "warn"
+missing_panics_doc       = "warn"
+
+# ── profile ─────────────────────────────────────────────────────────────────
+[profile.release]
+# **必须是 unwind**。选 `abort` 会同时打掉三件东西：
+#   ① `TaskSupervisor` 区分「panic」与「被外部 abort」的能力（退出分类靠它）；
+#   ② `CatchPanicLayer`——一个 handler panic 会杀掉整个进程；
+#   ③ `debug_assert!` 之外的不变量检查在 release 下的可观察性。
+# 换来的代价只是二进制略大和展开表。纪律只在 debug 下成立的话，它就不是纪律。
+panic = "unwind"

@@ -1,0 +1,33 @@
+# clippy 的**配置**，不是 lint 集合。lint 集合只有一处：根 `Cargo.toml` 的
+# `[workspace.lints]`。这里放的是那些 lint 的作用域参数。
+#
+# 为什么需要这个文件：`unwrap_used` / `expect_used` / `panic` 这三条守的是**库代码**里
+# "把失败藏进运行期"。测试代码里它们的含义正好相反——`unwrap()` 在测试里就是断言，
+# 换成 `match` + `panic!` 只是把同一件事写长，还照样触发 `panic` 那条。
+#
+# 备选做法是在每个 `mod tests` 上打 `#[allow(...)]`。不选它的理由：那会在全仓散布
+# 几十处 `allow`，而门禁扫描正是冲着 `allow` 的密度去的——真正需要人看的那几处
+# 会淹没在样板里。这里改成一处配置、由 clippy 按 `#[cfg(test)]` 结构性判定，
+# 库代码里的 `unwrap()` 一个都放不过去。
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests  = true
+
+# handler 必须用 `api` 的包装提取器，不能直接用 axum 的。
+#
+# 差别只有一处，但那一处是整条契约：axum 的提取器失败时回的是 **text/plain**
+# （`JsonRejection::body_text()` 那串话），而本服务要求所有错误响应长一个样。混用的结果是
+# 同一个服务里 404 是 JSON、422 是纯文本，客户端得写两套解析。
+#
+# 这条禁令必须由**工具**执行，不能靠文档：`axum::extract::Json` 是写 handler 时最顺手的
+# 那个名字，补全会主动推它，评审也几乎不会注意到少了一个 `crate::` 前缀。
+#
+# 注意 `axum::Json` 与 `axum::extract::Json` 是同一个类型，所以这条同时禁掉了把它当**响应**
+# 类型用——这是有意的：`crate::Json` 两边都能用（它自己实现了 `IntoResponse`），
+# 于是使用者不需要在任何位置念 axum 的那个名字。唯一的例外在 `api/src/extract.rs`，
+# 那里必须调用被包装的原件，`#[allow]` 打在那三个函数上——最小单元，不是整个模块。
+disallowed-types = [
+    { path = "axum::extract::Json",  reason = "用 `crate::Json`：失败时走统一错误信封，而不是 text/plain" },
+    { path = "axum::extract::Path",  reason = "用 `crate::Path`：失败时走统一错误信封，而不是 text/plain" },
+    { path = "axum::extract::Query", reason = "用 `crate::Query`：失败时走统一错误信封，而不是 text/plain" },
+]

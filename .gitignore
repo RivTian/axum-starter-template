@@ -1,0 +1,24 @@
+# 构建产物。
+#
+# 开发期的配置与数据也落在这下面——安装根是**可执行文件所在的目录**，`cargo run`
+# 的可执行文件在 `target/debug/`，于是 `target/debug/config/service.toml` 和
+# `target/debug/data/` 也在这里。直接后果：`cargo clean` 会把本地配置和 SQLite 库
+# 一起删掉。README 的「配置和数据在 `target/debug/` 下，这是有意的」讲的就是这件事。
+/target
+
+# rustfmt 的备份文件。`cargo fmt` 很少留下它，留下就是噪声。
+**/*.rs.bk
+
+# macOS Finder 的目录元数据。跟仓库内容无关，但会跟着 `git add .` 溜进来。
+.DS_Store
+
+# ── 这里没有 `Cargo.lock`，是有意的 ──────────────────────────────────────────
+#
+# 很多 Rust 模板会把它忽略掉，那是**库**的习惯：库不该替下游钉依赖版本。
+# 这是一个可执行的服务，锁文件必须进版本库，理由有两条，第二条更硬：
+#
+#   · 同一份代码在不同机器上解析出不同的依赖版本，排查起来是最贵的那类问题。
+#   · 三条门禁全都带 `--locked`。锁文件不在版本库里，`make check` 在别人的机器上
+#     第一步就红。
+#
+# 代价是改完 `[workspace.package].version` 要跟着跑一次 `make relock`，见 Makefile。
