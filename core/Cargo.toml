@@ -1,0 +1,39 @@
+[package]
+name         = "{{crate_prefix}}-core"
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+publish      = { workspace = true }
+description  = "共享词汇与进程面原语：任务面、关停预算、生命周期广播、配置管线、存储门面"
+
+# 钉住 lib 目标名，让 Rust 源里的 crate 名与项目名脱钩（理由写在根清单第 1 条纪律）。
+# 每个成员都写，不按"这个 crate 现在有没有 `tests/`"决定——那是会变的，而变的时候没人会
+# 想起来回来补这一行。
+[lib]
+name = "service_core"
+
+[lints]
+workspace = true
+
+[dependencies]
+# `rt`    —— JoinSet / AbortHandle / Handle 类型（不含调度器，`rt-multi-thread` 只有 app 能开）
+# `sync`  —— watch（生命周期阶段广播）
+# `time`  —— Instant / sleep_until（关停预算是绝对 deadline）
+# `macros`—— select!（取消优先的 `biased` 纪律）
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+
+# 这里**没有** `tokio-util`。级联取消的根 token 建在 `app`，child token 由各面自己持有，
+# 而 `core` 的任务面只描述"谁在跑、怎么退的"，不持有取消句柄。写一条没人 `use` 的依赖
+# 会被 `unused_crate_dependencies` 指出来。
+
+serde           = { workspace = true }
+humantime-serde = { workspace = true }
+thiserror       = { workspace = true }
+tracing         = { workspace = true }
+
+[dev-dependencies]
+# 这里**没有** `service-testkit`。它的内容是日志捕获与临时安装根，而 `core` 的用例全是
+# 纯函数与内存对象，一条都用不上。清单里写一条没人 `use` 的依赖会被
+# `unused_crate_dependencies` 指出来——那条 lint 正是为这种情况存在的。
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
