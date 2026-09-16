@@ -1,0 +1,51 @@
+[package]
+name         = "{{crate_prefix}}-worker"
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+publish      = { workspace = true }
+description  = "周期任务面样板：返回 future、取消优先、热配置每 tick 现读"
+
+# 钉住 lib 目标名，让 Rust 源里的 crate 名与项目名脱钩（理由写在根清单第 1 条纪律）。
+[lib]
+name = "service_worker"
+
+[lints]
+workspace = true
+
+[dependencies]
+
+# 面的词汇全在这里：`PlaneFuture` / `PlaneError` / `TaskSpec` / `AckSender` / `ConfigReader`
+# / `LifecycleReader`。这一层**只有**这一条成员边——邻接表里 `worker → storage` 是明令禁止的，
+# 后台任务要读写数据时走 `app` 注入的 `Arc<dyn core::Storage>`，不是 build-depend。
+service-core = { workspace = true }
+
+# `time`   —— `sleep`：每 tick 现读间隔之后等这么久
+# `macros` —— `select!`：取消优先的 `biased` 纪律
+# 这里**没有** `rt`：本层一个任务都不 spawn，只返回一个 future，由 `app` 决定它跑在哪个
+# runtime 上。能 spawn 就会有人 spawn，少给一个 feature 比写一条纪律可靠。
+tokio = { workspace = true, features = ["time", "macros"] }
+
+# `CancellationToken`：根 token 级联下来的取消句柄。
+tokio-util = { workspace = true }
+
+# 与 `storage` 相反，这一层**必须**自己打日志：tick 是进程里唯一一个"改了配置立刻能观察到
+# 效果"的行为，而它的全部可观察面就是那条事件——热重载到底有没有生效，全靠它才看得见。
+# 存储层的失败还能通过 `StorageError` 上抛给 `app` 记录，tick 没有这样的上抛点，
+# 不在这里记就在任何地方都记不到。
+tracing = { workspace = true }
+
+[dev-dependencies]
+
+# 断言"那条 tick 事件确实发出来了"要能看见事件本身，而不是靠副作用倒推。
+service-testkit = { workspace = true }
+
+# `rt` 而**不是** `rt-multi-thread`：本层的用例全部跑在暂停的时钟上（`start_paused = true`），
+# 而 `tokio::time::pause()` 只在 current-thread 调度器里成立，多线程调度器下它直接 panic。
+# 默认间隔是 30 秒起步的，不暂停时钟就只能靠真实等待——门禁会变慢，而且"慢到底算不算过"
+# 这件事会随机器负载漂。
+tokio = { workspace = true, features = ["rt", "macros", "time", "test-util"] }
+
+# 用例要自己造一个根 token 来验取消优先。
+tokio-util = { workspace = true }
