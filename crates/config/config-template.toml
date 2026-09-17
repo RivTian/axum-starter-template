@@ -1,0 +1,28 @@
+# 这是缺配置文件时落盘的默认配置模板（编译期嵌进二进制）。
+#
+# 位置：路径锚点（可执行文件所在目录）下的 config.toml；也可以用 --config 或 ENV_PREFIX_CONFIG 指定别处。
+# 每一项的"档位"说明它怎么生效：可热 = 改完立即生效；半热 = 下次使用时生效；不可热 = 改完需要重启进程。
+# 未知键会让启动失败（拼错键即错误）；删掉某一段等价于取这里的默认值。
+# 校验只拦"继续跑必然失败"的取值，其余越界会被钳位并告警（无人值守下拒绝启动的代价更大）。
+
+[log]
+# 可热：tracing 过滤器（EnvFilter 语法）。空串等价于 "info"。
+filter = "info"
+
+[supervisor]
+# 半热：任务重启的退避下限与上限（毫秒）。0 会被拒绝（拒绝启动）。
+restart_backoff_ms = 500
+restart_backoff_cap_ms = 30000
+
+[http]
+# 不可热：监听地址。端口 0 = 由操作系统分配，启动日志里会打印实际地址。
+bind = "127.0.0.1:0"
+
+[storage]
+# 不可热：SQLite URL。相对路径从路径锚点派生（不是从 cwd，也不是从配置文件所在目录）。
+# 优先级：url_env > url_file > url；url_file 同样是相对锚点的路径。
+url = "sqlite:data/service.db?mode=rwc"
+url_env = ""
+url_file = ""
+# 不可热：SQLite busy_timeout（毫秒）。允许范围 100..=300000，越界会被钳位并告警。
+busy_timeout_ms = 5000
