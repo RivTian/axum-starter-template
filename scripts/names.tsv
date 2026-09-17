@@ -1,0 +1,5 @@
+# 名字矩阵：label<TAB>project-name<TAB>crate_prefix
+# full = 跑完整 make check；fmt = 只生成并跑 cargo fmt --check（不拉依赖，快）
+full	long	extremely-long-project-name-used-for-template-verification	abcdefghijklmnopqrstuvwxyz012345
+full	short	x	s
+fmt	typical	dev-service	svc

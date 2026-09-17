@@ -1,4 +1,290 @@
 # {{crate_name}}
 
-{{project-name}} 是一个 Rust Web 服务骨架；这份 README 会在后续分层落地时补齐两条垂直切片
-（加第一个顶层任务面 / 怎么加一个仓储）。
+一个 Rust Web 服务骨架：能起、能停、能测，并且把一组难写对的进程纪律写进了代码与注释里。
+生成之后先改 `[workspace.package]` 的 `version` 与 `authors`——那是你自己的项目事实。
+
+## 快速开始
+
+```sh
+make check   # fmt-check / lint / test：门禁的唯一定义
+cargo run    # 第一条日志是构建串；Ctrl-C 之后每个任务都有 stopped 记录
+```
+
+- **零配置可起**：没有 `config.toml` 时会自动把默认配置写到**可执行文件所在目录**
+  （开发时是 `target/debug/config.toml`），首次运行直接看这份文件就知道有哪些旋钮。
+- **端口默认 `127.0.0.1:0`**（由操作系统分配）：启动日志里的 `address=127.0.0.1:xxxxx` 才是实际地址。
+- **关停契约**：第一次 Ctrl-C（或 SIGTERM）开始优雅关停，第二次只加速、不刷新截止时间；
+  退出码 0 干净 / 2 启动失败 / 3 fatal 任务退出 / 4 关停未完成。
+
+## 目录与分层
+
+```text
+crates/
+├── core/      错误分类与统一 Result（不依赖任何兄弟 crate）
+├── config/    配置 schema、三段入口、路径锚点、热重载
+├── runtime/   supervisor、任务面契约、五类退出、关停预算
+├── storage/   Db 门面（开池/迁移/关池）与迁移目录
+├── http/      零路由起步的 router 与可关停的 serve
+└── app/       装配层（CLI、资源、任务注册、信号、退出码）+ 二进制
+```
+
+依赖边只有下面这些，多一条少一条都会被 `crates/app/tests/structure.rs` 判红：
+
+| 成员 | 允许依赖的兄弟 |
+| --- | --- |
+| `core` | ——（叶子） |
+| `config` / `runtime` / `storage` / `http` | `core` |
+| `app` | 以上全部 |
+
+规矩：
+
+- **第三方依赖只在根 `Cargo.toml` 声明一次**，成员一律写 `{ workspace = true }`；根依赖表每条旁边就是它的理由。
+- **`lib.rs` 只做 `mod` 声明与显式 `pub use`**（窄门面），不加通配 re-export。
+- **零业务全局态**：配置、存储、取消信号都由装配层构造并注入；一个进程里可以同时跑两套独立服务
+  （`crates/app/tests/isolation.rs` 就在这么做）。
+
+## 切片一：加第一个顶层任务面
+
+任务面就是一个**返回 future 的函数**：spawn 到哪个 runtime 由装配层决定，任务面里不写 spawn。
+
+**① 新建 `crates/app/src/flush.rs`**
+
+<!-- slice: task/flush.rs -->
+```rust
+//! 切片一：第一个顶层任务面。
+//!
+//! 契约（来自 crates/runtime）：任务面**返回 future**，spawn 到哪个 runtime 由装配层决定；
+//! 收尾必须观察 `ctx.cancelled()`——否则关停时它只能被 abort，报告里会记成"没收回来的任务"。
+
+use std::time::Duration;
+
+use svc_core::Error;
+use svc_runtime::TaskContext;
+
+/// 每 5 秒打一条心跳；收到取消就收尾返回。
+pub async fn run(ctx: TaskContext) -> Result<(), Error> {
+    let mut ticker = tokio::time::interval(Duration::from_secs(5));
+    loop {
+        tokio::select! {
+            _ = ctx.cancelled() => {
+                tracing::info!(task = %ctx.key(), "flush stopped");
+                return Ok(());
+            }
+            _ = ticker.tick() => {
+                tracing::info!(task = %ctx.key(), "flush tick");
+            }
+        }
+    }
+}
+```
+
+**② 在 `crates/app/src/lib.rs` 里声明模块**（`mod` 声明按字母序；加完跑一次 `cargo fmt`）
+
+```rust
+mod flush;
+```
+
+**③ 在 `crates/app/src/assembly.rs` 里注册**（写在"你自己的任务面注册在这里"锚点之后）
+
+<!-- slice: task/register.rs -->
+```rust
+        supervisor.register(TaskSpec::new(
+            TaskKey::new("flush"),
+            RuntimeId::MAIN,
+            |ctx: TaskContext| Box::pin(async move { crate::flush::run(ctx).await }),
+        ))?;
+```
+
+**④ 验证**
+
+```sh
+make check
+cargo run          # 每 5 秒一条 flush tick
+# 另一个终端：Ctrl-C（或 kill -INT <pid>）
+```
+
+关停日志里应当出现 `stopped task=flush runtime=main`。没出现？检查任务面是否在
+`ctx.cancelled()` 上收尾——没收尾的任务会被记成 `task did not stop ... action=aborted`。
+
+## 切片二：加一个仓储
+
+骨架里没有表、没有仓储：只有连接池、迁移运行器与关闭所有权。加第一个仓储要动四处。
+
+**① 加迁移 `crates/storage/migrations/0001_create_notes.sql`**
+
+<!-- slice: repo/migrations/0001_create_notes.sql -->
+```sql
+CREATE TABLE notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    body TEXT NOT NULL
+);
+```
+
+迁移在启动的"提交点"之前运行：失败就拒绝启动（退出码 2），不会带着半套 schema 提供服务。
+只前滚：已经用过的迁移不要再改，需要纠正就再加一条。
+
+**② 写仓储 `crates/storage/src/notes.rs`**
+
+<!-- slice: repo/notes.rs -->
+```rust
+//! 切片二：第一个仓储。
+//!
+//! 门面约定（来自 crates/storage）：`Db` 的所有权在装配层（它要负责最后关池），
+//! 仓储只克隆一个池句柄；错误统一包成 `Error`，别把 `sqlx` 的错误类型泄漏到上层。
+
+use sqlx::SqlitePool;
+use svc_core::{Error, ErrorKind};
+
+use crate::Db;
+
+/// `notes` 表的仓储。
+#[derive(Clone)]
+pub struct NotesRepo {
+    pool: SqlitePool,
+}
+
+impl NotesRepo {
+    /// 从 `Db` 门面拿一个池句柄（`Db` 本身的所有权仍归装配层）。
+    pub fn new(db: &Db) -> Self {
+        Self {
+            pool: db.pool().clone(),
+        }
+    }
+
+    /// 写入一条并返回自增主键。
+    pub async fn insert(&self, body: &str) -> Result<i64, Error> {
+        let result = sqlx::query("INSERT INTO notes (body) VALUES (?)")
+            .bind(body)
+            .execute(&self.pool)
+            .await
+            .map_err(|err| Error::with_source(ErrorKind::Storage, "写入 notes 失败", err))?;
+        Ok(result.last_insert_rowid())
+    }
+
+    /// 统计条数。
+    pub async fn count(&self) -> Result<i64, Error> {
+        sqlx::query_scalar("SELECT COUNT(*) FROM notes")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|err| Error::with_source(ErrorKind::Storage, "统计 notes 失败", err))
+    }
+}
+```
+
+**③ 在 `crates/storage/src/lib.rs` 里导出**（`mod` 与 `pub use` 都按字母序）
+
+```rust
+mod notes;
+pub use notes::NotesRepo;
+```
+
+**④ 接线：写消费者任务面，并在装配层注册**
+
+仓储不能只是"写好了没人用"。新建 `crates/app/src/writer.rs`：
+
+<!-- slice: repo/writer.rs -->
+```rust
+//! 切片二：仓储的消费者（任务面）。
+//!
+//! 仓储不能只是"写好了没人用"——这里演示它被一个任务面消费：启动时写一条，之后等取消。
+
+use svc_core::Error;
+use svc_runtime::TaskContext;
+use svc_storage::NotesRepo;
+
+/// 写一条笔记并汇报条数，然后等取消。
+pub async fn run(ctx: TaskContext, repo: NotesRepo) -> Result<(), Error> {
+    let id = repo.insert("hello from the repo slice").await?;
+    let count = repo.count().await?;
+    tracing::info!(id, count, task = %ctx.key(), "notes written");
+    ctx.cancelled().await;
+    Ok(())
+}
+```
+
+在 `crates/app/src/lib.rs` 里声明 `mod writer;`，然后在 `crates/app/src/assembly.rs` 的
+"你自己的任务面注册在这里"锚点之后加：
+
+<!-- slice: repo/register.rs -->
+```rust
+        let notes = svc_storage::NotesRepo::new(&db);
+        supervisor.register(TaskSpec::new(
+            TaskKey::new("notes-writer"),
+            RuntimeId::MAIN,
+            move |ctx: TaskContext| {
+                let notes = notes.clone();
+                Box::pin(async move { crate::writer::run(ctx, notes).await })
+            },
+        ))?;
+```
+
+**⑤ 验证**
+
+```sh
+make check
+cargo run     # 日志里出现 notes written（id / count）；Ctrl-C 正常收尾
+```
+
+## 配置
+
+配置文件的三个入口（优先级从高到低）：
+
+1. `--config <path>`（CLI）
+2. `{{env_prefix}}_CONFIG`（环境变量）
+3. `<可执行文件所在目录>/config.toml`（默认）
+
+**路径锚点永远是"可执行文件所在目录"**，不是当前工作目录：配置里的相对路径（数据目录、
+`url_file`、`sqlite:` 里的相对路径）都从锚点派生。换个目录启动，读到的仍是同一份配置、写的是同一份数据。
+
+值也可以用环境变量覆盖（只认带 `__` 的形状，拼错键会拒绝启动）：
+
+```sh
+{{env_prefix}}_HTTP__BIND=127.0.0.1:8080
+{{env_prefix}}_LOG__FILTER=debug
+```
+
+配置的每一段都有"档位"，写着它改动之后怎么生效：
+
+| 段 · 键 | 档位 | 生效方式 |
+| --- | --- | --- |
+| `log.filter` | 可热 | 改完立即生效（日志过滤器） |
+| `supervisor.restart_backoff_ms` / `restart_backoff_cap_ms` | 半热 | 写进共享参数，下次调度重启时生效 |
+| `http.bind` | 不可热 | 回滚为运行值，列入"待重启"日志 |
+| `storage.url` / `url_env` / `url_file` / `busy_timeout_ms` | 不可热 | 同上 |
+
+规矩：**未知键是错误**（拼错键即错误），缺段等价默认值；校验只拦"继续跑必然失败"的取值，
+其余越界钳位并告警——无人值守下拒绝启动的代价更大。
+
+敏感取值按固定优先级解析：`url_env` > `url_file` > 明文 `url`；解析结果在日志与 `Debug` 里
+永远渲染成 `***`。
+
+## 关停契约
+
+```text
+第一次停止信号 → 广播 draining（2s）→ 协作取消 → 限时收割（4s）
+              → abort 未收尾者 + 观察（0.5s）→ 逆序关闭资源（2s，存储最后）
+第二次停止信号 → 只把剩余每段压到 250ms，绝不刷新截止时间
+```
+
+- 报告如实区分：`stopped`（真正收尾）/ `still_running`（abort 之后仍没回来）/ `aborted`；
+  收不回来的任务在日志里是 `task did not stop ... action=aborted`，不会假报 grace 停。
+- 退出码：`0` 干净关停 / `2` 启动失败 / `3` fatal 任务自行退出 / `4` 关停未完成。
+
+## 观测
+
+- 日志只有一种形态（单行、带 target），由装配层安装一次；库 crate 只发事件。
+- 启动第一条日志是构建串（版本 + git sha + dirty + profile）。
+- 每个任务的退出都有一条 `task exited`：`cause` 是"谁的意图"
+  （`completed` / `failed` / `panicked` / `cancelled` / `restarted`），`outcome` 是 future 的实际结局。
+
+## 故意不做的事
+
+- **不带 API 端点**：`crates/http` 只有零路由的 `router()`。加第一条业务路由时，顺手把健康检查加上。
+- **不预建表、不预放仓储**：见切片二。
+- **不带 CI 配置**：`make check` 是门禁的唯一定义，接什么 CI 是你自己的部署事实。
+- **不带部署事实**：没有写死的端口、没有交叉编译目标、没有容器链。
+
+## 想要第二个 runtime？
+
+多 runtime 的准入清单与关闭顺序写在 `crates/runtime/README.md` 里。骨架默认只有一个主 runtime；
+没有明确理由（隔离阻塞/CPU 密集任务）就别加。

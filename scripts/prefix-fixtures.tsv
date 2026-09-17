@@ -1,0 +1,11 @@
+# 前缀形状夹具：expect<TAB>prefix<TAB>说明
+# expect = ok 时生成必须成功；= fail 时生成必须失败且错误信息指向 crate_prefix。
+ok	svc	典型前缀
+ok	a	最短
+ok	x_y-z9	混合分隔符（单个、两侧都有字母数字）
+ok	abcdefghijklmnopqrstuvwxyz012345	长度上限 32
+fail	Svc	大写（最常见的输入错误）
+fail	1svc	数字开头（cargo 拒绝）
+fail	svc-	以分隔符结尾
+fail	svc--core	连续分隔符
+fail	abcdefghijklmnopqrstuvwxyz0123456	超过长度上限
