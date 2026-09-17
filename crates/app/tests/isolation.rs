@@ -7,12 +7,22 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use {{crate_prefix_snake}}_app::{Args, Assembly, ProcessExit, Telemetry, exit_code, resolve_with_anchor};
-use {{crate_prefix_snake}}_config::{Anchor, Config, ENV_PREFIX, EnvSource, MapEnv};
-use {{crate_prefix_snake}}_runtime::{ShutdownReport, StopSignal};
 use tempfile::TempDir;
 use tokio::runtime::Builder;
 use tokio::sync::watch;
+
+use {{crate_prefix_snake}}_app::Args;
+use {{crate_prefix_snake}}_app::Assembly;
+use {{crate_prefix_snake}}_app::ProcessExit;
+use {{crate_prefix_snake}}_app::Telemetry;
+use {{crate_prefix_snake}}_app::exit_code;
+use {{crate_prefix_snake}}_app::resolve_with_anchor;
+use {{crate_prefix_snake}}_config::Anchor;
+use {{crate_prefix_snake}}_config::Config;
+use {{crate_prefix_snake}}_config::ENV_PREFIX;
+use {{crate_prefix_snake}}_config::EnvSource;
+use {{crate_prefix_snake}}_config::MapEnv;
+use {{crate_prefix_snake}}_runtime::{ShutdownReport, StopSignal};
 
 struct Finished {
     report: ShutdownReport,

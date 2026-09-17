@@ -9,15 +9,18 @@
 
 use std::sync::Once;
 
-use {{crate_prefix_snake}}_config::Notice;
-use {{crate_prefix_snake}}_core::{Error, ErrorKind};
-use {{crate_prefix_snake}}_runtime::{ExitRecord, ShutdownReport, StopTrigger};
 use tracing_subscriber::Registry;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::reload;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::util::TryInitError;
+
+use {{crate_prefix_snake}}_config::Notice;
+use {{crate_prefix_snake}}_core::{Error, ErrorKind};
+use {{crate_prefix_snake}}_runtime::ExitRecord;
+use {{crate_prefix_snake}}_runtime::ShutdownReport;
+use {{crate_prefix_snake}}_runtime::StopTrigger;
 
 static PANIC_HOOK: Once = Once::new();
 
@@ -34,7 +37,12 @@ impl Telemetry {
         let (layer, handle) = reload::Layer::new(env_filter);
         let subscriber = Registry::default()
             .with(layer)
-            .with(tracing_subscriber::fmt::layer().with_target(true));
+            // 一种形态：单行、带 target、不带 ANSI 颜色（日志文件/采集器不需要转义序列）。
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_target(true)
+                    .with_ansi(false),
+            );
         let subscriber: Box<dyn tracing::Subscriber + Send + Sync> = Box::new(subscriber);
         Ok(Self {
             handle,

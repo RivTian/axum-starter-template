@@ -13,6 +13,7 @@
 use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
+
 use {{crate_prefix_snake}}_core::{Error, ErrorKind};
 
 use crate::anchor::Anchor;

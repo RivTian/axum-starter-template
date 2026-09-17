@@ -6,8 +6,9 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use {{crate_prefix_snake}}_core::{Error, ErrorKind};
 use tokio::runtime::Handle;
+
+use {{crate_prefix_snake}}_core::{Error, ErrorKind};
 
 /// 任务的名字。同一进程内必须唯一（重复注册在 `register` 时即报错）。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]

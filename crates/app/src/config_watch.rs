@@ -6,10 +6,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio::sync::mpsc;
+
 use {{crate_prefix_snake}}_config::Reloader;
 use {{crate_prefix_snake}}_core::{Error, ErrorKind};
 use {{crate_prefix_snake}}_runtime::TaskContext;
-use tokio::sync::mpsc;
 
 use crate::config_state::ConfigState;
 

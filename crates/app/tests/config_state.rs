@@ -3,10 +3,16 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use {{crate_prefix_snake}}_app::{ConfigState, Telemetry};
-use {{crate_prefix_snake}}_config::{Anchor, ConfigSource, EnvSource, MapEnv, Reloader, load};
-use {{crate_prefix_snake}}_runtime::{Backoff, shared_backoff};
 use tempfile::TempDir;
+
+use {{crate_prefix_snake}}_app::{ConfigState, Telemetry};
+use {{crate_prefix_snake}}_config::Anchor;
+use {{crate_prefix_snake}}_config::ConfigSource;
+use {{crate_prefix_snake}}_config::EnvSource;
+use {{crate_prefix_snake}}_config::MapEnv;
+use {{crate_prefix_snake}}_config::Reloader;
+use {{crate_prefix_snake}}_config::load;
+use {{crate_prefix_snake}}_runtime::{Backoff, shared_backoff};
 
 struct Fixture {
     _temp: TempDir,

@@ -4,11 +4,21 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use {{crate_prefix_snake}}_app::{Args, Assembly, ProcessExit, Telemetry, exit_code, resolve_with_anchor, watchdog};
-use {{crate_prefix_snake}}_config::{Anchor, EnvSource, ErrorKind, MapEnv};
-use {{crate_prefix_snake}}_runtime::{ShutdownReport, StopSignal, StopTrigger, TaskKey};
 use tempfile::TempDir;
 use tokio::runtime::Builder;
+
+use {{crate_prefix_snake}}_app::Args;
+use {{crate_prefix_snake}}_app::Assembly;
+use {{crate_prefix_snake}}_app::ProcessExit;
+use {{crate_prefix_snake}}_app::Telemetry;
+use {{crate_prefix_snake}}_app::exit_code;
+use {{crate_prefix_snake}}_app::resolve_with_anchor;
+use {{crate_prefix_snake}}_app::watchdog;
+use {{crate_prefix_snake}}_config::{Anchor, EnvSource, ErrorKind, MapEnv};
+use {{crate_prefix_snake}}_runtime::ShutdownReport;
+use {{crate_prefix_snake}}_runtime::StopSignal;
+use {{crate_prefix_snake}}_runtime::StopTrigger;
+use {{crate_prefix_snake}}_runtime::TaskKey;
 
 #[test]
 fn exit_code_mapping_covers_all_cases() {

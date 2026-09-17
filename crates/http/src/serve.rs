@@ -6,8 +6,9 @@
 use std::future::Future;
 
 use axum::Router;
-use {{crate_prefix_snake}}_core::{Error, ErrorKind};
 use tokio::net::TcpListener;
+
+use {{crate_prefix_snake}}_core::{Error, ErrorKind};
 
 /// 零路由起步的 router。加第一条路由从这里开始（`Router::route(...)`）。
 pub fn router() -> Router {

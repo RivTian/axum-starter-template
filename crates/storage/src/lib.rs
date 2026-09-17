@@ -4,6 +4,7 @@
 //! 加第一张表和第一个仓储的步骤见生成项目根 README 的切片二。
 
 mod db;
+// 你的仓储模块声明与导出在这里（切片二会加 `mod notes;` / `pub use notes::NotesRepo;`）
 
 pub use db::Db;
 

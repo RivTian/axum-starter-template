@@ -7,7 +7,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use {{crate_prefix_snake}}_config::ENV_PREFIX;
-use {{crate_prefix_snake}}_runtime::{ShutdownReport, StopSignal, StopTrigger};
+use {{crate_prefix_snake}}_runtime::ShutdownReport;
+use {{crate_prefix_snake}}_runtime::StopPhase;
+use {{crate_prefix_snake}}_runtime::StopSignal;
+use {{crate_prefix_snake}}_runtime::StopTrigger;
 
 use crate::assembly::Assembly;
 use crate::settings::{Args, process_env, resolve};
@@ -111,6 +114,14 @@ pub fn run(args: Args) -> ProcessExit {
     // 首条事件固定是构建串：先回答"跑的是哪份代码"。
     tracing::info!(build = %build_string(), "starting");
     tracing::info!(env_prefix = ENV_PREFIX, "configuration environment prefix");
+    // 第二条回答"读的是哪份配置、锚点在哪"（路径锚点=可执行文件所在目录）。
+    tracing::info!(
+        path = %settings.source.path.display(),
+        origin = settings.source.origin.as_str(),
+        anchor = %settings.anchor.dir().display(),
+        from_embedded_template = settings.from_embedded_template,
+        "configuration loaded"
+    );
     telemetry.log_notices(&settings.notices);
     if settings.from_embedded_template {
         tracing::warn!(
@@ -139,13 +150,22 @@ pub fn run(args: Args) -> ProcessExit {
     };
 
     let stop = StopSignal::new();
-    let watchdog_task = runtime.spawn(watchdog(WATCHDOG_BUDGET, || {
-        eprintln!(
-            "shutdown did not finish within the watchdog budget ({}s): forcing exit",
-            WATCHDOG_BUDGET.as_secs()
-        );
-        std::process::exit(i32::from(ProcessExit::IncompleteShutdown.code()));
-    }));
+    let watchdog_task = runtime.spawn({
+        let stop = stop.clone();
+        async move {
+            // L0 是"关停"的上限，不是进程寿命的上限：先等停止请求，再开始计时。
+            let mut phase = stop.subscribe();
+            let _ = phase.wait_for(|phase| *phase >= StopPhase::Draining).await;
+            watchdog(WATCHDOG_BUDGET, || {
+                eprintln!(
+                    "shutdown did not finish within the watchdog budget ({}s): forcing exit",
+                    WATCHDOG_BUDGET.as_secs()
+                );
+                std::process::exit(i32::from(ProcessExit::IncompleteShutdown.code()));
+            })
+            .await;
+        }
+    });
 
     let outcome = runtime.block_on(assembly.run(&runtime, stop));
     watchdog_task.abort();

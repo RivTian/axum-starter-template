@@ -8,10 +8,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio::sync::watch;
+
 use {{crate_prefix_snake}}_config::{Config, ReloadOutcome, ReloadReport};
 use {{crate_prefix_snake}}_core::Error;
-use {{crate_prefix_snake}}_runtime::{Backoff, SharedBackoff, set_shared_backoff};
-use tokio::sync::watch;
+use {{crate_prefix_snake}}_runtime::Backoff;
+use {{crate_prefix_snake}}_runtime::SharedBackoff;
+use {{crate_prefix_snake}}_runtime::set_shared_backoff;
 
 use crate::telemetry::Telemetry;
 

@@ -6,15 +6,27 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use {{crate_prefix_snake}}_runtime::{
-    Backoff, Error, ExitCause, ExitRecord, RestartPolicy, RuntimeId, RuntimeSet, ShutdownBudget,
-    ShutdownReport, StopSignal, StopTrigger, Supervisor, TaskContext, TaskKey, TaskOutcome,
-    TaskSpec, shared_backoff,
-};
 use tokio::runtime::{Builder, Handle, Runtime};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
+use {{crate_prefix_snake}}_runtime::Backoff;
+use {{crate_prefix_snake}}_runtime::Error;
+use {{crate_prefix_snake}}_runtime::ExitCause;
+use {{crate_prefix_snake}}_runtime::ExitRecord;
+use {{crate_prefix_snake}}_runtime::RestartPolicy;
+use {{crate_prefix_snake}}_runtime::RuntimeId;
+use {{crate_prefix_snake}}_runtime::RuntimeSet;
+use {{crate_prefix_snake}}_runtime::ShutdownBudget;
+use {{crate_prefix_snake}}_runtime::ShutdownReport;
+use {{crate_prefix_snake}}_runtime::StopSignal;
+use {{crate_prefix_snake}}_runtime::StopTrigger;
+use {{crate_prefix_snake}}_runtime::Supervisor;
+use {{crate_prefix_snake}}_runtime::TaskContext;
+use {{crate_prefix_snake}}_runtime::TaskKey;
+use {{crate_prefix_snake}}_runtime::TaskOutcome;
+use {{crate_prefix_snake}}_runtime::TaskSpec;
+use {{crate_prefix_snake}}_runtime::shared_backoff;
 fn budget() -> ShutdownBudget {
     ShutdownBudget {
         total: Duration::from_secs(10),

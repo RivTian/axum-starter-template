@@ -14,22 +14,35 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use {{crate_prefix_snake}}_config::{Anchor, Config, EnvSource, Reloader, watch_file};
-use {{crate_prefix_snake}}_core::{Error, ErrorKind};
-use {{crate_prefix_snake}}_runtime::{
-    Backoff, RuntimeId, RuntimeSet, SharedBackoff, ShutdownBudget, ShutdownReport, StopPhase,
-    StopSignal, Supervisor, TaskContext, TaskKey, TaskSpec, shared_backoff,
-};
-use {{crate_prefix_snake}}_storage::Db;
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
+
+use {{crate_prefix_snake}}_config::Anchor;
+use {{crate_prefix_snake}}_config::Config;
+use {{crate_prefix_snake}}_config::EnvSource;
+use {{crate_prefix_snake}}_config::Reloader;
+use {{crate_prefix_snake}}_config::watch_file;
+use {{crate_prefix_snake}}_core::{Error, ErrorKind};
+use {{crate_prefix_snake}}_runtime::Backoff;
+use {{crate_prefix_snake}}_runtime::RuntimeId;
+use {{crate_prefix_snake}}_runtime::RuntimeSet;
+use {{crate_prefix_snake}}_runtime::SharedBackoff;
+use {{crate_prefix_snake}}_runtime::ShutdownBudget;
+use {{crate_prefix_snake}}_runtime::ShutdownReport;
+use {{crate_prefix_snake}}_runtime::StopPhase;
+use {{crate_prefix_snake}}_runtime::StopSignal;
+use {{crate_prefix_snake}}_runtime::Supervisor;
+use {{crate_prefix_snake}}_runtime::TaskContext;
+use {{crate_prefix_snake}}_runtime::TaskKey;
+use {{crate_prefix_snake}}_runtime::TaskSpec;
+use {{crate_prefix_snake}}_runtime::shared_backoff;
+use {{crate_prefix_snake}}_storage::Db;
 
 use crate::config_state::ConfigState;
 use crate::config_watch;
 use crate::settings::Settings;
 use crate::telemetry::Telemetry;
-
 /// 装配好的运行单元。
 pub struct Assembly {
     settings: Settings,
@@ -141,9 +154,6 @@ impl Assembly {
         );
         let mut records = supervisor.subscribe();
 
-        // 资源 closer：存储最后关（它是唯一资源，也是最后注册的）。
-        supervisor.register_resource("storage", async move { db.close().await })?;
-
         // 配置文件监听：回调 → mpsc；watcher 活到 run 结束（drop 即停止监听）。
         let config_dir = parent_dir(&self.settings.source.path)?;
         let config_file = file_name(&self.settings.source.path)?;
@@ -166,10 +176,7 @@ impl Assembly {
                             "HTTP 任务面被重启，但监听器随第一个化身消耗掉了：请先重新绑定再重启",
                         ));
                     };
-                    {{crate_prefix_snake}}_http::serve(listener, {{crate_prefix_snake}}_http::router(), async move {
-                        ctx.cancelled().await
-                    })
-                    .await
+                    serve_http(listener, ctx).await
                 })
             },
         ))?;
@@ -203,10 +210,15 @@ impl Assembly {
             },
         ))?;
 
-        // 用户任务面（切片一 / 测试）。
+        // 用户任务面（切片一 / 切片二 / 测试）。
         for spec in std::mem::take(&mut self.extra_tasks) {
             supervisor.register(spec)?;
         }
+        // ── 你自己的任务面注册在这里（生成项目根 README 的切片一 / 切片二）────────────
+        // （放在资源 closer 之前：这样接线时还能拿到 `&db`，之后 `db` 会被移交给 closer）
+
+        // 资源 closer：存储最后关（它是唯一资源，也是最后注册的）。
+        supervisor.register_resource("storage", async move { db.close().await })?;
 
         // ── 事件桥：把结构化退出记录打成日志（装配层是唯一知道日志形态的地方）────
         let telemetry = self.telemetry.clone();
@@ -248,6 +260,15 @@ impl std::fmt::Debug for Assembly {
             .field("anchor", &self.settings.anchor)
             .finish_non_exhaustive()
     }
+}
+
+/// HTTP 任务面：把监听器与停止观察点交给 http crate。
+///
+/// 单独成函数是为了让排版稳定：名字只出现在 import 行里，函数体与名字长度无关。
+async fn serve_http(listener: TcpListener, ctx: TaskContext) -> Result<(), Error> {
+    let router = {{crate_prefix_snake}}_http::router();
+    let shutdown = async move { ctx.cancelled().await };
+    {{crate_prefix_snake}}_http::serve(listener, router, shutdown).await
 }
 
 /// 信号监听：第一次把相位推到 Draining，第二次推到 Forced（只加速）。

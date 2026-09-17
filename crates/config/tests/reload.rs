@@ -5,11 +5,17 @@
 
 use std::sync::Arc;
 
-use {{crate_prefix_snake}}_config::{
-    Anchor, ConfigSource, MapEnv, NoticeKind, Reloader, Tier, classify, leaf_paths, load,
-};
 use tempfile::TempDir;
 
+use {{crate_prefix_snake}}_config::Anchor;
+use {{crate_prefix_snake}}_config::ConfigSource;
+use {{crate_prefix_snake}}_config::MapEnv;
+use {{crate_prefix_snake}}_config::NoticeKind;
+use {{crate_prefix_snake}}_config::Reloader;
+use {{crate_prefix_snake}}_config::Tier;
+use {{crate_prefix_snake}}_config::classify;
+use {{crate_prefix_snake}}_config::leaf_paths;
+use {{crate_prefix_snake}}_config::load;
 fn setup(temp: &TempDir) -> (Anchor, ConfigSource, Arc<MapEnv>, Reloader) {
     let anchor = Anchor::from_dir(temp.path());
     let env = Arc::new(MapEnv::new());

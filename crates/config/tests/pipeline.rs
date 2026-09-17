@@ -4,12 +4,18 @@
 
 use std::path::Path;
 
-use {{crate_prefix_snake}}_config::{
-    Anchor, ConfigSource, EMBEDDED_TEMPLATE, ENV_PREFIX, ErrorKind, FileConfig, MapEnv, NoticeKind,
-    SourceOrigin, load,
-};
 use tempfile::TempDir;
 
+use {{crate_prefix_snake}}_config::Anchor;
+use {{crate_prefix_snake}}_config::ConfigSource;
+use {{crate_prefix_snake}}_config::EMBEDDED_TEMPLATE;
+use {{crate_prefix_snake}}_config::ENV_PREFIX;
+use {{crate_prefix_snake}}_config::ErrorKind;
+use {{crate_prefix_snake}}_config::FileConfig;
+use {{crate_prefix_snake}}_config::MapEnv;
+use {{crate_prefix_snake}}_config::NoticeKind;
+use {{crate_prefix_snake}}_config::SourceOrigin;
+use {{crate_prefix_snake}}_config::load;
 fn anchor(temp: &TempDir) -> Anchor {
     Anchor::from_dir(temp.path())
 }

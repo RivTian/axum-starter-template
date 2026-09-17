@@ -6,13 +6,24 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
-use {{crate_prefix_snake}}_config::{Anchor, Config, ConfigSource, EnvSource, Notice, ProcessEnv, load};
+
+use {{crate_prefix_snake}}_config::Anchor;
+use {{crate_prefix_snake}}_config::Config;
+use {{crate_prefix_snake}}_config::ConfigSource;
+use {{crate_prefix_snake}}_config::EnvSource;
+use {{crate_prefix_snake}}_config::Notice;
+use {{crate_prefix_snake}}_config::ProcessEnv;
+use {{crate_prefix_snake}}_config::load;
 use {{crate_prefix_snake}}_core::Error;
+
+/// 二进制名与简介：放进常量，让 rustfmt 的排版与生成期定下的名字长度无关。
+const BIN_NAME: &str = "{{crate_name}}";
+const ABOUT: &str = "{{project-name}} 服务";
 
 /// 命令行入口。生成结果不带部署事实，所以这里也没有端口/绑定之类的参数——
 /// 那些都在配置文件里（`[http].bind`）。
 #[derive(Debug, Parser)]
-#[command(name = "dev_service", version, about = "dev-service 服务")]
+#[command(name = BIN_NAME, version, about = ABOUT)]
 pub struct Args {
     /// 配置文件位置（默认：可执行文件所在目录下的 config.toml）。
     #[arg(long, value_name = "PATH")]
@@ -45,13 +56,8 @@ pub fn resolve_with_anchor(
 ) -> Result<Settings, Error> {
     let source = ConfigSource::locate(args.config.as_deref(), env.as_ref(), &anchor);
     let loaded = load(&source, &anchor, env.as_ref())?;
-    tracing::info!(
-        path = %source.path.display(),
-        origin = source.origin.as_str(),
-        anchor = %anchor.dir().display(),
-        from_embedded_template = loaded.from_embedded_template,
-        "configuration loaded"
-    );
+    // 注意：这里可能发生在 subscriber 安装之前（首载在 telemetry 之前），所以不在这里打日志；
+    // "读的是哪份配置"由 bootstrap 在日志起来之后统一落（见 `configuration loaded`）。
     Ok(Settings {
         anchor,
         source: loaded.source,

@@ -5,6 +5,7 @@
 
 mod assembly;
 mod bootstrap;
+// 你自己的任务面模块声明在这里（切片一会加 `mod flush;`）
 mod config_state;
 mod config_watch;
 mod settings;

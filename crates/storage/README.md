@@ -10,7 +10,7 @@
 
 ## 目录
 
-- `src/db.rs`：`Db` 门面与单元测试（迁移集必须为空这条纪律也在这里钉住）。
+- `src/db.rs`：`Db` 门面（开池 / 迁移 / 关池）。
 - `migrations/`：SQL 迁移目录（骨架为空，命名与纪律见目录里的 README）。
 - `tests/db.rs`：开池、迁移记账、`PRAGMA busy_timeout`、关池、非法 scheme 的报错。
 

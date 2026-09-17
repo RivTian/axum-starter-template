@@ -2,10 +2,11 @@
 
 use std::time::Duration;
 
-use {{crate_prefix_snake}}_http::{router, serve};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
+
+use {{crate_prefix_snake}}_http::{router, serve};
 
 #[tokio::test]
 async fn serves_the_router_and_stops_on_shutdown() {

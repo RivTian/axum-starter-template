@@ -1,10 +1,12 @@
 //! `Db`：SQLite 连接池的唯一所有者。
 
+use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
 use {{crate_prefix_snake}}_core::{Error, ErrorKind};
 
 /// 迁移集在编译期嵌入二进制：部署时不需要额外搬运 `.sql` 文件。
@@ -35,6 +37,7 @@ impl Db {
                 "storage.url 只支持 `sqlite:` scheme（骨架的存储引擎事实；换引擎见 crates/storage/README.md）",
             ));
         }
+        ensure_parent_dir(url)?;
         let options = SqliteConnectOptions::from_str(url).map_err(|err| {
             // 不把 url 放进 message：它可能带凭据；原因链里有需要的信息就够了。
             Error::with_source(
@@ -79,18 +82,31 @@ impl Db {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn migration_set_is_empty_by_contract() {
-        // 骨架不预建表：一旦有人往 migrations/ 放了 .sql，这条会红——那时请把测试改成
-        // "迁移集不再为空"并更新 README 的切片说明（而不是默默让骨架带表）。
-        assert_eq!(
-            MIGRATIONS.iter().count(),
-            0,
-            "骨架的迁移集必须为空：不预建表、不预放仓储"
-        );
+/// 首次启动时数据库文件可能还不存在：SQLite 不会替我们创建父目录，所以这里补上。
+///
+/// 只对"文件形式的 sqlite URL"生效（`:memory:`、`file:`、`sqlite://` 都不碰）。
+fn ensure_parent_dir(url: &str) -> Result<(), Error> {
+    let Some(rest) = url.strip_prefix("sqlite:") else {
+        return Ok(());
+    };
+    if rest.starts_with("//") || rest.starts_with(":memory:") || rest.starts_with("file:") {
+        return Ok(());
     }
+    let path = rest.split('?').next().unwrap_or(rest);
+    if path.is_empty() {
+        return Ok(());
+    }
+    let Some(parent) = Path::new(path).parent() else {
+        return Ok(());
+    };
+    if parent.as_os_str().is_empty() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(parent).map_err(|err| {
+        Error::with_source(
+            ErrorKind::Startup,
+            format!("创建数据库目录 `{}` 失败", parent.display()),
+            err,
+        )
+    })
 }

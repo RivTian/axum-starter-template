@@ -15,11 +15,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use {{crate_prefix_snake}}_core::{Error, ErrorKind};
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::{AbortHandle, Id, JoinError, JoinSet};
 use tokio::time::{Instant, timeout_at};
 use tokio_util::sync::CancellationToken;
+
+use {{crate_prefix_snake}}_core::{Error, ErrorKind};
 
 use crate::exit::{ExitCause, ExitRecord, TaskOutcome};
 use crate::id::{RuntimeSet, TaskKey};
@@ -27,7 +28,6 @@ use crate::shutdown::{
     ShutdownBudget, ShutdownReport, StopPhase, StopSignal, StopToken, StopTrigger,
 };
 use crate::spec::{RestartPolicy, SharedBackoff, TaskContext, TaskFuture, TaskSpec};
-
 /// 资源关闭器：按注册顺序的**逆序**执行（最后打开的最先关；存储因此最后关）。
 struct Resource {
     name: String,
@@ -197,7 +197,6 @@ impl Supervisor {
 
     /// 运行到停止，然后走完整关停序列，返回诚实报告。
     pub async fn run(mut self, signal: &StopSignal) -> ShutdownReport {
-        let started = Instant::now();
         let mut phase_rx = signal.subscribe();
         let mut trigger = None;
 
@@ -216,12 +215,8 @@ impl Supervisor {
             }
         }
 
-        self.shutdown(
-            &mut phase_rx,
-            trigger.unwrap_or(StopTrigger::Signal),
-            started,
-        )
-        .await
+        self.shutdown(&mut phase_rx, trigger.unwrap_or(StopTrigger::Signal))
+            .await
     }
 
     async fn next_event(&mut self, phase_rx: &mut watch::Receiver<StopPhase>) -> Event {
@@ -494,8 +489,9 @@ impl Supervisor {
         &mut self,
         phase_rx: &mut watch::Receiver<StopPhase>,
         trigger: StopTrigger,
-        started: Instant,
     ) -> ShutdownReport {
+        // 预算是"关停"的上限：从进入关停开始计时（服务跑多久都不该消耗关停预算）。
+        let started = Instant::now();
         let mut report = ShutdownReport::new(trigger);
         let hard_deadline = started + self.budget.total;
 

@@ -9,6 +9,7 @@
 use std::path::Path;
 
 use notify::{RecursiveMode, Watcher};
+
 use {{crate_prefix_snake}}_core::{Error, ErrorKind};
 
 /// 存活的监听器：drop 掉它，监听就停。

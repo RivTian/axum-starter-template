@@ -2,8 +2,9 @@
 
 use std::time::Duration;
 
-use {{crate_prefix_snake}}_storage::{Db, ErrorKind};
 use tempfile::TempDir;
+
+use {{crate_prefix_snake}}_storage::{Db, ErrorKind};
 
 fn url(temp: &TempDir) -> String {
     format!("sqlite:{}/test.db?mode=rwc", temp.path().display())
@@ -19,11 +20,11 @@ async fn pool_opens_and_migrations_apply() {
     db.migrate().await.expect("空迁移集也必须能跑");
 
     // 迁移运行器建立了记账表：这是"迁移真的跑过"的证据，而不是"没报错"。
-    let recorded: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+    // 不断言迁移条数——骨架不带迁移，但加了第一个迁移之后这个测试仍要绿。
+    sqlx::query("SELECT COUNT(*) FROM _sqlx_migrations")
         .fetch_one(db.pool())
         .await
         .expect("迁移记账表必须存在");
-    assert_eq!(recorded, 0, "骨架里不该有迁移");
 
     // 仓储实现要用的查询路径是通的。
     sqlx::query("CREATE TABLE probe (id INTEGER PRIMARY KEY, note TEXT NOT NULL)")

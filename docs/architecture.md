@@ -560,7 +560,7 @@ flowchart LR
 | 证据形态 | 覆盖 | 位置 |
 | --- | --- | --- |
 | 结构测试（解析 `Cargo.toml` 与 `src/*.rs` 文本） | I1、支撑约束（零全局态、窄门面、依赖理由） | `crates/app/tests/structure.rs` |
-| 行为测试（in-process，`tokio::time` 暂停时钟） | I2、I3、I4 | `crates/runtime/tests/*`、`crates/config/tests/*`、`crates/storage/tests/*`、`crates/app/tests/config_state.rs`（watch==生效、副作用应用） |
+| 行为测试（in-process，`tokio::time` 暂停时钟） | I2、I3、I4 | `crates/runtime/tests/*`、`crates/config/tests/*`、`crates/storage/tests/db.rs`、`crates/app/tests/config_state.rs`（watch==生效、副作用应用） |
 | 进程探针（真实二进制 + SIGINT + 日志/退出码断言 + 两个 cwd 对照 + 配置落在锚点） | I3、I5、DoD 3/8 | 模板侧 `scripts/probe.sh`（由 `make probe` 调用） |
 | 生成矩阵（cargo-generate 真实展开，仓库树外，不复用编译缓存） | I5、DoD 2 | 模板侧 `make matrix` / `make check-gen` |
 | 切片走通（照 README 代码块应用 + `make check` + 运行断言） | I5、DoD 4 | 模板侧 `scripts/slices/` + `make slices` |

@@ -14,7 +14,7 @@ use {{crate_prefix_snake}}_core::{Error, ErrorKind};
 use crate::schema::FileConfig;
 
 /// 环境变量前缀：由生成时的 `crate_name` 派生（大写、`_` 分隔），写进代码而不是靠猜。
-pub const ENV_PREFIX: &str = "DEV_SERVICE";
+pub const ENV_PREFIX: &str = "{{env_prefix}}";
 
 /// 配置文件位置的环境变量名。
 pub fn config_env_name() -> String {
