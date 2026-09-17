@@ -1,3 +1,12 @@
-//! 存储门面：`Db`（开池/关池）与迁移运行器。
+//! 存储门面：`Db`（开池 / 迁移 / 关池）。
 //!
-//! 实现随分层推进落地；边界与决策见 crate README 与 `docs/architecture.md §8`。
+//! 骨架里**没有任何表、没有任何仓储**：只有"怎么把连接池开对、迁移跑对、关池关对"。
+//! 加第一张表和第一个仓储的步骤见生成项目根 README 的切片二。
+
+mod db;
+
+pub use db::Db;
+
+// 公共 API 里到处是 core::Error，调用方不该为了接一个错误再去加一条直接依赖。
+pub use {{crate_prefix_snake}}_core::Error;
+pub use {{crate_prefix_snake}}_core::ErrorKind;

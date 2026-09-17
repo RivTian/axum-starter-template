@@ -31,7 +31,7 @@ rust-version = "1.85"
 "{{crate_prefix}}-http" = { path = "crates/http" } # HTTP 任务面（零路由起步）
 
 # ── 第三方 ────────────────────────────────────────────────────────────────────
-tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "net", "fs"] } # 唯一的异步运行时：任务、信号、时钟、通道
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "net", "fs", "io-util"] } # 唯一的异步运行时：任务、信号、时钟、通道、字节流读写
 tokio-util = { version = "0.7", features = ["rt"] } # CancellationToken：可克隆的协作取消原语
 axum = "0.8" # HTTP 框架；serve + with_graceful_shutdown 是最小的可关停服务面
 tracing = "0.1" # 结构化事件：库只负责发出，subscriber 由装配层安装
