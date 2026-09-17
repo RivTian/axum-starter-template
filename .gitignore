@@ -1,0 +1,9 @@
+# 模板仓库自己的忽略表。
+# 生成结果拿到的是 .gitignore.liquid 渲染出来的那一份，不是这个文件。
+.DS_Store
+*.swp
+*.orig
+*.rej
+/.cache/
+/tools/audit/target/
+/tools/audit/Cargo.lock

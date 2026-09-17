@@ -1,0 +1,7 @@
+[package]
+name = "{{crate_prefix}}-core"
+description = "分层根：错误分类与统一 Result；不依赖任何兄弟 crate"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true

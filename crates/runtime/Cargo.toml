@@ -1,0 +1,15 @@
+[package]
+name = "{{crate_prefix}}-runtime"
+description = "supervisor、任务面契约、五类退出、关停预算与报告"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+"{{crate_prefix}}-core" = { workspace = true } # 任务面的错误类型
+tokio = { workspace = true } # spawn/select/时间/通道：supervisor 的运行基础
+tokio-util = { workspace = true } # CancellationToken：每个化身的协作取消
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] } # 暂停时钟：把每段预算钉成确定性测试

@@ -1,0 +1,16 @@
+[package]
+name = "{{crate_prefix}}-config"
+description = "配置 schema、三段入口、路径锚点、唯一加载管线与热重载"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+"{{crate_prefix}}-core" = { workspace = true } # 错误分类与统一 Result
+notify = { workspace = true } # 监听配置文件所在目录的文件系统事件
+serde = { workspace = true } # 反序列化配置并拒绝未知键
+toml = { workspace = true } # 配置文件格式（错误带位置）
+
+[dev-dependencies]
+tempfile = { workspace = true } # 每个测试一个临时锚点

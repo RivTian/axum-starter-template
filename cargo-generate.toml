@@ -1,0 +1,21 @@
+# cargo-generate 模板配置。
+#
+# 生成期只有一个问题：crate_prefix（包名前缀）。project-name 由 --name 给出，
+# crate_name / 目录名由 cargo-generate 自己派生；其余派生变量在 hooks/pre.rhai 里。
+[template]
+# 实测过的版本区间：0.24.x。更宽的区间没有被验证过，不要放宽。
+cargo_generate_version = ">=0.24.0, <0.25.0"
+# ignore 收字面路径（不支持通配符），且路径不存在时静默跳过——模板侧 make audit 会断言每条都存在。
+# 注意：hooks/ 与 *.liquid 生成侧文件不能进这个列表（前者会让 post hook 轮不到执行，后者会被误删）。
+ignore = ["docs", "scripts", "tools"]
+
+[placeholders.crate_prefix]
+type = "string"
+prompt = "包名前缀？（用于 <prefix>-core / <prefix>-storage 等包名，例如 svc）"
+# 这里只拦"互动输入里最常见的形状错误"（大写、非法字符、超长）；权威校验在 hooks/pre.rhai，
+# 那里的消息会给出正确示例。给的默认值：无——前缀会进包名与环境变量，必须是有意识的选择。
+regex = "^[a-z][a-z0-9_-]{0,31}$"
+
+[hooks]
+pre = ["hooks/pre.rhai"]
+post = ["hooks/post.rhai"]

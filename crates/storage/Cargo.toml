@@ -1,0 +1,16 @@
+[package]
+name = "{{crate_prefix}}-storage"
+description = "Db 门面（开池/关池）与迁移运行器；骨架里没有任何仓储与表"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+"{{crate_prefix}}-core" = { workspace = true } # 统一的错误分类
+sqlx = { workspace = true } # 异步 SQLite 池与编译期嵌入的迁移
+tracing = { workspace = true } # 迁移进度等事件（只发不收）
+
+[dev-dependencies]
+tempfile = { workspace = true } # 临时数据库文件
+tokio = { workspace = true } # 异步测试

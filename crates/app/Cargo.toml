@@ -1,0 +1,26 @@
+[package]
+name = "{{crate_prefix}}-app"
+description = "装配层：配置入口、资源获取、任务注册、关停编排与退出码"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "{{crate_name}}"
+path = "src/main.rs"
+
+[dependencies]
+"{{crate_prefix}}-core" = { workspace = true } # 统一错误分类（决定退出码）
+"{{crate_prefix}}-config" = { workspace = true } # 配置加载、重载与热度分档
+"{{crate_prefix}}-runtime" = { workspace = true } # supervisor 与关停预算
+"{{crate_prefix}}-storage" = { workspace = true } # Db 门面（最后关闭的资源）
+"{{crate_prefix}}-http" = { workspace = true } # HTTP 任务面
+clap = { workspace = true } # CLI 入口契约（--config / --help）
+tokio = { workspace = true } # 主运行时与信号
+tracing = { workspace = true } # 事件入口（库侧只发，这里是收口）
+tracing-subscriber = { workspace = true } # 进程内唯一的日志实现（含 filter 热重载）
+
+[dev-dependencies]
+tempfile = { workspace = true } # 两套独立装配各自的临时锚点
+toml = { workspace = true } # 结构测试解析成员清单

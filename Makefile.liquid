@@ -1,0 +1,14 @@
+# 门禁的唯一定义：fmt-check / lint / test。
+# 只需要 make 与 cargo，不需要任何别的工具链。
+.PHONY: check fmt-check lint test
+
+check: fmt-check lint test
+
+fmt-check:
+	cargo fmt --all -- --check
+
+lint:
+	cargo clippy --workspace --all-targets -- -D warnings
+
+test:
+	cargo test --workspace

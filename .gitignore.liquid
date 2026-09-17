@@ -1,0 +1,8 @@
+# 构建产物
+/target
+
+# SQLite：默认库落在可执行文件旁的 data/ 下（开发时即 target/debug/data，已被 /target 覆盖）。
+# 边车文件不能漏：-wal 里可能还有没 checkpoint 的真实数据行。
+*.db
+*.db-wal
+*.db-shm

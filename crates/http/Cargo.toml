@@ -1,0 +1,16 @@
+[package]
+name = "{{crate_prefix}}-http"
+description = "HTTP 任务面：零路由起步的 router 与可关停的 serve"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+"{{crate_prefix}}-core" = { workspace = true } # serve 的错误类型
+axum = { workspace = true } # HTTP 框架本体
+tokio = { workspace = true } # TcpListener 与关停等待
+tracing = { workspace = true } # 绑定/关停事件（只发不收）
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] } # 暂停时钟下的关停测试

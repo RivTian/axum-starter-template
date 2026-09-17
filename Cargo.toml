@@ -1,0 +1,49 @@
+# 工作区根：成员、共享元数据、依赖表。
+#
+# 三条纪律（由 crates/app/tests/structure.rs 机械校验）：
+#   1. 第三方依赖只在这里声明一次，成员一律 `{ workspace = true }`；
+#   2. 兄弟 crate 的依赖边必须落在邻接表里（见 crates/app/tests/structure.rs）；
+#   3. 每条依赖后的行内注释就是它存在的理由——写不出理由的依赖不该在这里。
+[workspace]
+resolver = "3"
+members = [
+    "crates/app",
+    "crates/config",
+    "crates/core",
+    "crates/http",
+    "crates/runtime",
+    "crates/storage",
+]
+
+[workspace.package]
+# 生成之后先改这里：version 与 authors 是你自己的项目事实。
+version = "0.1.0"
+authors = []
+edition = "2024"
+rust-version = "1.85"
+
+[workspace.dependencies]
+# ── 兄弟 crate：包名带项目前缀，路径固定 ────────────────────────────────────────
+"{{crate_prefix}}-core" = { path = "crates/core" } # 分层根：错误分类与统一 Result
+"{{crate_prefix}}-config" = { path = "crates/config" } # 配置 schema、路径锚点、热重载
+"{{crate_prefix}}-runtime" = { path = "crates/runtime" } # supervisor、任务面契约、关停预算
+"{{crate_prefix}}-storage" = { path = "crates/storage" } # Db 门面与迁移运行器
+"{{crate_prefix}}-http" = { path = "crates/http" } # HTTP 任务面（零路由起步）
+
+# ── 第三方 ────────────────────────────────────────────────────────────────────
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "net", "fs"] } # 唯一的异步运行时：任务、信号、时钟、通道
+tokio-util = { version = "0.7", features = ["rt"] } # CancellationToken：可克隆的协作取消原语
+axum = "0.8" # HTTP 框架；serve + with_graceful_shutdown 是最小的可关停服务面
+tracing = "0.1" # 结构化事件：库只负责发出，subscriber 由装配层安装
+tracing-subscriber = { version = "0.3", features = ["env-filter"] } # 装配层唯一的日志实现；reload::Layer 让日志过滤器可热改（reload 随 std 特性提供）
+serde = { version = "1", features = ["derive"] } # 配置反序列化与重载 diff
+toml = "1" # 配置文件格式：错误带位置，未知键可拒绝
+sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio", "migrate", "macros"] } # 存储门面：异步 SQLite 池 + 编译期嵌入的迁移
+notify = "8.2" # 配置文件监听的事件源（回调式，不拥有运行时）
+clap = { version = "4", features = ["derive"] } # CLI 入口契约：--config 与 --help 不该手写
+tempfile = "3" # 测试专用：每个用例一个临时锚点/数据库/生成目录
+
+[profile.release]
+# unwind：任务 panic 必须能被 supervisor 观察成"可分类的退出原因"；
+# abort 会绕过 JoinError::is_panic（也绕过 HTTP 层的 panic 捕获），与五类退出不自洽。
+panic = "unwind"
