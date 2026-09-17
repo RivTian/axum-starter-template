@@ -1,0 +1,11 @@
+[package]
+name = "audit"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# 独立 workspace：模板根的 Cargo.toml 是"待渲染"的模板，不能在这里被解析。
+[workspace]
+
+[dependencies]
+toml = "1" # 解析 cargo-generate.toml 与成员清单
