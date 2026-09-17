@@ -23,4 +23,5 @@ tracing-subscriber = { workspace = true } # 进程内唯一的日志实现（含
 
 [dev-dependencies]
 tempfile = { workspace = true } # 两套独立装配各自的临时锚点
+tokio = { workspace = true, features = ["test-util"] } # 虚拟时钟：看门狗到点/不提前触发
 toml = { workspace = true } # 结构测试解析成员清单
