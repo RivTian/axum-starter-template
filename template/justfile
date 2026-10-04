@@ -1,4 +1,5 @@
-# Recipes of {{project-name}}. They use no just interpolation: ${CARGO_LOCKED:-} is a shell
+# Recipes of {{project-name}}. The binary is selected with --bin, which a dependency can never
+# share, unlike a package name. They use no just interpolation: ${CARGO_LOCKED:-} is a shell
 # variable, which CI sets to --locked so that builds use the committed Cargo.lock.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
@@ -9,11 +10,11 @@ default:
 
 # Run the service with the example configuration.
 run:
-    cargo run -p {{project-name}} -- run --config config/example.toml
+    cargo run --bin {{project-name}} -- run --config config/example.toml
 
 # Check the example configuration and print every key's value and source.
 check-config:
-    cargo run -p {{project-name}} -- check-config --config config/example.toml
+    cargo run --bin {{project-name}} -- check-config --config config/example.toml
 
 # Every quality check, in the order CI runs them.
 check: fmt-check lint test doc typos machete deny{% if with_ci %} workflows{% endif %}
@@ -64,20 +65,20 @@ msrv:
 
 # Run with tokio-console support; connect with `tokio-console`.
 console:
-    RUSTFLAGS="--cfg tokio_unstable" cargo run -p {{project-name}} --features console -- run --config config/example.toml
+    RUSTFLAGS="--cfg tokio_unstable" cargo run --bin {{project-name}} --features {{project-name}}/console -- run --config config/example.toml
 
 # The console feature: its error without the cfg, then a build with the cfg, in a target
 # directory of its own so the cfg never reaches the main build cache.
 console-check:
     cargo nextest run -p {{project-name}}-telemetry --features console ${CARGO_LOCKED:-} -E 'test(the_console_needs_tokio_unstable)'
-    RUSTFLAGS="--cfg tokio_unstable" CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}/console" cargo check -p {{project-name}} --features console ${CARGO_LOCKED:-}
+    RUSTFLAGS="--cfg tokio_unstable" CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}/console" cargo check --bin {{project-name}} --features {{project-name}}/console ${CARGO_LOCKED:-}
 
 # A release archive: dist/{{project-name}}-<version>-<target>.tar.gz with the binary,
 # README.md, THIRD_PARTY_NOTICES.md and LICENSE (when there is one).
 package:
     #!/usr/bin/env bash
     set -euo pipefail
-    cargo build --release ${CARGO_LOCKED:-} -p {{project-name}}
+    cargo build --release ${CARGO_LOCKED:-} --bin {{project-name}}
     target="$(rustc -vV | sed -n 's/^host: //p')"
     version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
     name="{{project-name}}-${version}-${target}"

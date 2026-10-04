@@ -53,19 +53,32 @@ impl fmt::Display for Class {
 }
 
 /// An error kind this project defines: a `PascalCase` name for logs and problem types, a
-/// class, and a short title shown to callers of client errors.
+/// class, and, for kinds that reach callers as client errors, a short title.
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct ErrorKind {
     name: &'static str,
     class: Class,
-    title: &'static str,
+    title: Option<&'static str>,
 }
 
 impl ErrorKind {
-    /// A kind with this name, class and title.
+    /// A kind with this name and class, without a title.
     #[must_use]
-    pub const fn new(name: &'static str, class: Class, title: &'static str) -> Self {
-        ErrorKind { name, class, title }
+    pub const fn new(name: &'static str, class: Class) -> Self {
+        ErrorKind {
+            name,
+            class,
+            title: None,
+        }
+    }
+
+    /// The same kind with a title, shown to callers when it is answered as a client error.
+    #[must_use]
+    pub const fn titled(self, title: &'static str) -> Self {
+        ErrorKind {
+            title: Some(title),
+            ..self
+        }
     }
 
     /// The name, such as `TodoNotFound`.
@@ -80,9 +93,9 @@ impl ErrorKind {
         self.class
     }
 
-    /// The title, such as `Todo not found`.
+    /// The title, such as `Todo not found`, if the kind has one.
     #[must_use]
-    pub const fn title(&self) -> &'static str {
+    pub const fn title(&self) -> Option<&'static str> {
         self.title
     }
 }
@@ -136,11 +149,8 @@ mod tests {
     use super::{Class, ErrorKind};
     use crate::error::ErrorType;
 
-    const MISSING: ErrorType = ErrorType::Kind(&ErrorKind::new(
-        "ThingMissing",
-        Class::NotFound,
-        "Thing missing",
-    ));
+    const MISSING: ErrorType =
+        ErrorType::Kind(&ErrorKind::new("ThingMissing", Class::NotFound).titled("Thing missing"));
 
     #[test]
     fn a_kind_carries_its_name_class_and_title() {
@@ -149,7 +159,7 @@ mod tests {
         let ErrorType::Kind(kind) = MISSING else {
             return;
         };
-        assert_eq!(kind.title(), "Thing missing");
+        assert_eq!(kind.title(), Some("Thing missing"));
     }
 
     #[test]

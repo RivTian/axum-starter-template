@@ -22,7 +22,8 @@ macro_rules! log_at_level {
 }
 
 /// Logs an error where it is handled, with `error.type`, `error.class`, `error.source`,
-/// `error.retry`, `error.context` and `error.chain`, then the given fields and message.
+/// `error.retry`, `error.context`, `error.chain` and `error.cause`, then the given fields and
+/// message.
 ///
 /// ```
 /// use svc_util::error::{Error, ErrorType};
@@ -42,6 +43,7 @@ macro_rules! log_error {
             error.retry = fields.retry,
             error.context = fields.context.as_str(),
             error.chain = fields.chain.as_str(),
+            error.cause = fields.cause.as_str(),
             $($arg)+
         )
     }};

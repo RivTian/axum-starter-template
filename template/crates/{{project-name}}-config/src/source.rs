@@ -22,11 +22,25 @@ impl fmt::Display for Source {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Source::Default => f.write_str("default"),
-            Source::File(path) => write!(f, "file {}", path.display()),
-            Source::Env(name) => write!(f, "env {name}"),
+            Source::File(path) => write!(f, "file {}", printable(&path.display().to_string())),
+            Source::Env(name) => write!(f, "env {}", printable(name)),
             Source::Cli(flag) => write!(f, "cli {flag}"),
         }
     }
+}
+
+/// Text as shown on one line: control characters, such as a newline in a file name or in a
+/// variable name, are written as `\u{..}` escapes, so no input can start a line of its own.
+pub(crate) fn printable(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if c.is_control() {
+                c.escape_unicode().to_string()
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
 }
 
 /// The source of every key of the schema, in key order.

@@ -14,7 +14,7 @@ shutdown, structured logging, layered configuration and a small example API for 
 
    Without just: `cargo run -p {{project-name}} -- run --config config/example.toml`.
    The first log lines give the version and the git commit (`git_sha` is `unknown` until
-   the first commit), then `listening http.addr=127.0.0.1:8080` and `phase=running`.
+   the first commit), then `listening http.addr=127.0.0.1:8080` and `phase="running"`.
 
 2. Ask whether it is alive and ready:
 

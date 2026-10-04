@@ -8,4 +8,3 @@ pub mod duration;
 pub mod error;
 mod log;
 pub mod prelude;
-pub mod secret;

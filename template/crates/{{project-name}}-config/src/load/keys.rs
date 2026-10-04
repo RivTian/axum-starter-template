@@ -4,7 +4,6 @@
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
-use svc_util::secret::REDACTED;
 use toml::{Table, Value};
 
 use crate::source::Source;
@@ -79,12 +78,6 @@ pub(super) fn collect_keys(
             leaves.insert(key);
         }
     }
-}
-
-/// Keys whose default serializes as `<redacted>`: the values of `Secret` fields.
-pub(super) fn secret_keys(defaults: &Table, leaves: &BTreeSet<String>) -> BTreeSet<String> {
-    let secret = |key: &&String| matches!(get_value(defaults, key), Some(Value::String(text)) if text == REDACTED);
-    leaves.iter().filter(secret).cloned().collect()
 }
 
 pub(crate) fn get_value<'t>(table: &'t Table, key: &str) -> Option<&'t Value> {

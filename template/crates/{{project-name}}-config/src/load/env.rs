@@ -2,7 +2,6 @@
 
 use std::ffi::{OsStr, OsString};
 
-use svc_util::secret::REDACTED;
 use toml::Value;
 
 use super::keys::quoted;
@@ -18,12 +17,7 @@ impl Layered {
         let text = value.to_string_lossy().into_owned();
         self.set(key, Value::String(text.clone()), source);
         if value.to_str().is_none() {
-            let shown = if self.secrets.contains(key) {
-                REDACTED.to_string()
-            } else {
-                quoted(&text)
-            };
-            self.not_utf8.insert(key.to_string(), shown);
+            self.not_utf8.insert(key.to_string(), quoted(&text));
         }
     }
 

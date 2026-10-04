@@ -176,11 +176,11 @@ full() {
   step just package
   step archive_holds "$name"
   # With CARGO_TARGET_DIR set, the recipe must still find the binary.
-  step env CARGO_TARGET_DIR="$PWD/target" just package
+  step env CARGO_TARGET_DIR="$PWD/target/elsewhere" just package
   nolock="$(mktemp -d)"
   /bin/cp -R "$dir" "$nolock/"
   (
-    cd "$nolock/$name"
+    cd "$nolock/$name" || exit 1
     rm -rf Cargo.lock target dist
     if [ -f .github/workflows/ci.yml ]; then run ci_needs_lock || exit 1; fi
     if [ -f Dockerfile ]; then run image_needs_lock "$image" || exit 1; fi

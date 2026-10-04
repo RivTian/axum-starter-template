@@ -8,7 +8,7 @@ COPY . .
 ARG GIT_SHA=unknown
 ENV VERGEN_GIT_SHA=${GIT_SHA}
 RUN test -f Cargo.lock || { echo "Cargo.lock is missing: run cargo generate-lockfile and commit it" >&2; exit 1; }
-RUN cargo build --release --locked -p {{project-name}}
+RUN cargo build --release --locked --bin {{project-name}}
 
 FROM gcr.io/distroless/cc-debian12:nonroot
 COPY --from=build /src/target/release/{{project-name}} /usr/local/bin/{{project-name}}

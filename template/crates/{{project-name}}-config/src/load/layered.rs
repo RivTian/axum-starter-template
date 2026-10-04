@@ -4,12 +4,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::de::DeserializeOwned;
-use svc_util::secret::REDACTED;
 use toml::{Table, Value};
 
-use super::keys::{
-    collect_keys, expected_form, get_value, priority, secret_keys, set_value, shown,
-};
+use super::keys::{collect_keys, expected_form, get_value, priority, set_value, shown};
 use crate::report::Problem;
 use crate::source::{Source, Sources};
 
@@ -18,7 +15,6 @@ pub(super) struct Layered {
     pub(super) value: Table,
     pub(super) leaves: BTreeSet<String>,
     pub(super) sections: BTreeSet<String>,
-    pub(super) secrets: BTreeSet<String>,
     pub(super) merged: BTreeMap<String, Source>,
     /// Keys whose value came from an environment variable that is not UTF-8, with the value
     /// as shown in the problem; a later source clears the mark.
@@ -31,13 +27,11 @@ impl Layered {
         let mut leaves = BTreeSet::new();
         let mut sections = BTreeSet::new();
         collect_keys(&defaults, "", &mut leaves, &mut sections);
-        let secrets = secret_keys(&defaults, &leaves);
         Layered {
             value: defaults.clone(),
             defaults,
             leaves,
             sections,
-            secrets,
             merged: BTreeMap::new(),
             not_utf8: BTreeMap::new(),
             problems: Vec::new(),
@@ -97,12 +91,12 @@ impl Layered {
         {
             for (index, item) in items.iter().enumerate() {
                 if let Err(element) = self.try_alone::<T>(key, Value::Array(vec![item.clone()])) {
-                    let detail = self.detail(key, item, &element);
+                    let detail = Self::detail(item, &element);
                     return Some(format!("{detail} (element {index})"));
                 }
             }
         }
-        Some(self.detail(key, value, &error))
+        Some(Self::detail(value, &error))
     }
 
     fn try_alone<T: DeserializeOwned>(
@@ -116,12 +110,11 @@ impl Layered {
     }
 
     /// `expected <form>, got <value>` for a value of the wrong form, with the form from the
-    /// field type and the value as given (`<redacted>` for a secret); otherwise the field's
+    /// field type and the value as given; otherwise the field's
     /// own message, such as `must be between 1 and 65536, got 0`.
-    fn detail(&self, key: &str, value: &Value, error: &toml::de::Error) -> String {
+    fn detail(value: &Value, error: &toml::de::Error) -> String {
         let message = error.message();
         match expected_form(message) {
-            Some(form) if self.secrets.contains(key) => format!("expected {form}, got {REDACTED}"),
             Some(form) => format!("expected {form}, got {}", shown(value)),
             None => message.to_string(),
         }

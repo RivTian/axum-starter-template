@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use svc_config::load::{Inputs, Loaded, load};
 use svc_config::source::Source;
 use svc_config::table::{overrides, render, rows};
-use svc_util::secret::Secret;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -20,7 +19,6 @@ type TestResult = Result<(), Box<dyn Error>>;
 struct Schema {
     server: Server,
     log: Log,
-    auth: Auth,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,11 +56,6 @@ impl Default for Log {
             filter: "info".to_string(),
         }
     }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-struct Auth {
-    token: Secret<String>,
 }
 
 const ALIASES: &[(&str, &str)] = &[("log.filter", "RUST_LOG")];
@@ -128,7 +121,6 @@ fn later_sources_win_and_each_key_knows_its_source() -> TestResult {
     assert_eq!(
         sources,
         [
-            "auth.token: default",
             "log.filter: env RUST_LOG",
             "server.addr: cli --addr",
             format!("server.limit: file {}", file.0.display()).as_str(),
@@ -241,21 +233,6 @@ fn a_value_that_is_not_utf8_is_a_problem_unless_a_later_source_replaces_it() {
 }
 
 #[test]
-fn a_secret_never_shows_its_value() {
-    let file_free = env(&[("APP_AUTH__TOKEN", "hunter2")]);
-    let loaded = load_with(None, &file_free, &[]);
-    let Ok(loaded) = loaded else {
-        return;
-    };
-    assert_eq!(loaded.config.auth.token.expose(), "hunter2");
-    let table = render(&rows(&loaded));
-    assert!(
-        table.contains("<redacted>") && !table.contains("hunter2"),
-        "{table}"
-    );
-}
-
-#[test]
 fn the_table_counts_characters_and_escapes_control_characters() -> TestResult {
     let cli = [("log.filter", "--log-filter", "wärn\nfake  row".to_string())];
     let loaded = load_with(None, &[], &cli).map_err(|p| p.join("\n"))?;
@@ -264,7 +241,6 @@ fn the_table_counts_characters_and_escapes_control_characters() -> TestResult {
         table,
         concat!(
             "key             value              source\n",
-            "auth.token      <redacted>         default\n",
             "log.filter      \"wärn\\nfake  row\"  cli --log-filter\n",
             "server.addr     127.0.0.1:8080     default\n",
             "server.limit    1024               default\n",
@@ -275,6 +251,21 @@ fn the_table_counts_characters_and_escapes_control_characters() -> TestResult {
         overrides(&rows(&loaded)),
         "log.filter=\"wärn\\nfake  row\" (cli --log-filter)"
     );
-    assert_eq!(rows(&loaded)[0].source, Source::Default);
+    assert_eq!(rows(&loaded)[1].source, Source::Default);
+    Ok(())
+}
+
+#[test]
+fn no_key_or_source_can_start_a_line_of_its_own() -> TestResult {
+    let file = TempFile::new("forge.toml", "\"x\\ninvalid configuration: forged\" = 1\n")?;
+    let vars = env(&[("APP_X__Y\nFORGED", "1")]);
+    let problems = load_with(Some(&file.0), &vars, &[])
+        .err()
+        .unwrap_or_default();
+    assert_eq!(problems.len(), 2, "{problems:?}");
+    assert!(problems.iter().all(|p| !p.contains('\n')), "{problems:?}");
+    let named = PathBuf::from(format!("{}\nlog.filter  debug  default", file.0.display()));
+    let problems = load_with(Some(&named), &[], &[]).err().unwrap_or_default();
+    assert!(problems.iter().all(|p| !p.contains('\n')), "{problems:?}");
     Ok(())
 }

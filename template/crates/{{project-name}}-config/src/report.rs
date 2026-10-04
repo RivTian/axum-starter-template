@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-use crate::source::Source;
+use crate::source::{Source, printable};
 
 /// One problem: about a key and where its value came from, or about the whole input, such as
 /// a file that is not valid TOML.
@@ -39,11 +39,8 @@ impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match (&self.key, &self.source) {
             (Some(key), Some(source)) => {
-                write!(
-                    f,
-                    "invalid configuration: {key} ({source}): {}",
-                    self.detail
-                )
+                let (key, detail) = (printable(key), &self.detail);
+                write!(f, "invalid configuration: {key} ({source}): {detail}")
             }
             _ => write!(f, "invalid configuration: {}", self.detail),
         }

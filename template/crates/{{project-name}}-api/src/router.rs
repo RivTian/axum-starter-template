@@ -8,14 +8,14 @@ use svc_util::prelude::*;
 use crate::problem::{self, ApiError};
 use crate::settings::ServerSettings;
 use crate::state::AppState;
-use crate::{health, middleware, todo};
+use crate::{middleware, probes, todo};
 
 /// The router of the service, with its middleware, over the given state and settings.
 pub fn router(state: AppState, settings: &ServerSettings) -> Router {
     let problem_state = (state.clone(), settings.request_timeout);
     Router::new()
-        .route("/livez", get(health::livez))
-        .route("/readyz", get(health::readyz))
+        .route("/livez", get(probes::livez))
+        .route("/readyz", get(probes::readyz))
         .route("/v1/todos", get(todo::list).post(todo::create))
         .route("/v1/todos/{id}", get(todo::get).delete(todo::delete))
         .route("/v1/todos/{id}/complete", post(todo::complete))

@@ -31,7 +31,8 @@ rule has a test that breaks it on purpose.
 | upstream-names    | `Custom`, `CustomCode`, `ReusedOnly`, `new_str` and `new_code` of the error type appear only in its vendored file | an error kind is an `ErrorKind`, and no retry decision is left open |
 
 Inside a crate: one concept per module, features grouped as `todo.rs` with `todo/`, no
-`mod.rs`, at most one directory below a top-level module, and no file over 500 lines.
+`mod.rs` in `src`, at most one directory below a top-level module, and no file over 500
+lines apart from the vendored pingora-error file.
 `lib.rs` only declares modules; a top-level module may re-export items of its private
 submodules, so every public path has two segments, such as `svc_util::error::Error`. Crates
 that other crates use a lot (util, domain, runtime) also have a `prelude`.
@@ -48,22 +49,25 @@ that other crates use a lot (util, domain, runtime) also have a `prelude`.
 | an endpoint             | the feature's module in api, and one line in `router.rs`                  | `todo.rs`                        |
 | a background task       | a type in infra implementing `svc_runtime::service::Service`, and one line in `wiring.rs` | `event_log.rs`   |
 | a configuration key     | the owning crate's `settings.rs`, and `config/example.toml`               | `server.request_timeout`         |
+| a readiness check       | a type implementing `svc_runtime::health::HealthCheck`, registered in `wiring.rs` | a database connection     |
 
 ## Errors
 
 The whole workspace uses one error type, `svc_util::error::Error`, from pingora-error (see
 `THIRD_PARTY_NOTICES.md`): a type, a source (upstream, downstream or internal), a retry
-decision, a context and a cause. An error kind of this project carries its class:
+decision, a context and a cause. An error kind of this project carries its class, and a
+title when callers see it as a client error:
 
 ```rust
 pub const TODO_NOT_FOUND: ErrorType =
-    ErrorType::Kind(&ErrorKind::new("TodoNotFound", Class::NotFound, "Todo not found"));
+    ErrorType::Kind(&ErrorKind::new("TodoNotFound", Class::NotFound).titled("Todo not found"));
 ```
 
 Adapters mark failures of a dependency with `into_up()` and set `retry` when a retry may
 help. An error is logged once, where it is handled: by the HTTP layer when it answers, or by
 the supervisor when a service fails. The fields are `error.type`, `error.class`,
-`error.source`, `error.retry`, `error.context` and `error.chain`. Lists of problems, such as
+`error.source`, `error.retry`, `error.context`, `error.chain` and `error.cause`, the text of
+the first error from outside the project, such as the operating system's. Lists of problems, such as
 an invalid configuration, are data and not errors.
 
 ## HTTP contract
@@ -119,11 +123,11 @@ log) works behind it.
 | `stopping` | 503       | after the drain delay, SIGINT, a failure, or startup failing; frontline services stop first, then background ones |
 | `stopped`  | -         | every service has stopped, or the deadline passed                   |
 
-While starting, a service that fails, panics or returns before it is ready fails the
-startup, and so does `startup_timeout`; a background service that was ready may finish.
-While running, a frontline service that returns, or any service that fails or panics, is a
-fault. A failure during a signal-started shutdown turns it into a fault. A second SIGTERM or
-SIGINT stops at once; SIGHUP is logged and ignored.
+A service that fails, panics or returns before it called `ready()` fails the startup (69),
+and so does `startup_timeout`. Once a service is ready, the same is a fault (70), whatever
+the other services are doing; only a background service may return `Ok`. A failure during a signal-started shutdown turns it into a fault. A second SIGTERM or
+SIGINT stops at once; SIGHUP is logged and ignored. A client that never finishes sending its
+request headers keeps its connection open until the deadline, and the exit code is then 75.
 
 | Exit code | Meaning                                                                    |
 | --------- | -------------------------------------------------------------------------- |
@@ -154,8 +158,12 @@ unset); variables `{{project-name | shouty_snake_case}}_<SECTION>__<KEY>`, such 
 Kubernetes adds for a Service of the same name, are ignored. Unknown keys are errors. Every
 problem is reported at once, one line each, with the key and where its value came from, and
 the process exits with 78. `check-config` runs the same checks and prints every key with its
-value and source; `run` logs the keys that differ from their defaults. Fields of type
-`Secret` show as `<redacted>`.
+value and source; `run` logs the keys that differ from their defaults. Every value is shown
+as it is, so keep secrets out of the configuration.
+
+A new key needs a deserializer from `svc_util::de` (or one of its own, as the log filters
+have): variables and flags give every value as text. Give it a default instead of making it
+an `Option`, since the serialized defaults are the list of keys.
 
 ## Logging
 

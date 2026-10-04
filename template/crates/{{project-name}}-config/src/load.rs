@@ -2,7 +2,7 @@
 //! the configuration file, aliases such as `RUST_LOG`, the project's environment variables
 //! and the command-line overrides. The serialized defaults are the schema, so a key that is
 //! not in them is rejected, from the file, the command line or a `<PREFIX>_<SECTION>__<KEY>`
-//! variable. A secret (a key whose default serializes as `<redacted>`) never shows its value.
+//! variable.
 
 mod env;
 mod file;

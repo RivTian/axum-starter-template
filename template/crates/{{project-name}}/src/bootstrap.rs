@@ -46,7 +46,12 @@ pub(crate) fn run(args: &ConfigArgs) -> Exit {
     let guard = match svc_telemetry::subscriber::init(&config.log, &env) {
         Ok(guard) => guard,
         Err(error) => {
-            exit::report(&format!("cannot start logging: {}", error.fields().context));
+            let fields = error.fields();
+            let reason = match fields.cause.as_str() {
+                "" => fields.context,
+                cause => format!("{}: {cause}", fields.context),
+            };
+            exit::report(&format!("cannot start logging: {reason}"));
             return Exit::CANT_CREATE;
         }
     };
@@ -83,7 +88,10 @@ pub(crate) fn run(args: &ConfigArgs) -> Exit {
 fn configuration(args: &ConfigArgs) -> Result<Loaded<Config>, Exit> {
     let env: Vec<(OsString, OsString)> = std::env::vars_os().collect();
     let config_var = format!("{ENV_PREFIX}_CONFIG");
-    let named = env.iter().find(|(name, _)| *name == *config_var);
+    // An empty value, as `${VAR}` in a compose file gives, counts as unset.
+    let named = env
+        .iter()
+        .find(|(name, value)| *name == *config_var && !value.is_empty());
     let file = (args.config.clone()).or_else(|| named.map(|(_, path)| PathBuf::from(path)));
     let cli = args.overrides();
     let inputs = Inputs {

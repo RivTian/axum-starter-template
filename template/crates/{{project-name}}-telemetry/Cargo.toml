@@ -27,6 +27,7 @@ tracing-appender.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+toml.workspace = true
 log = { workspace = true, features = ["std"] }
 serde_json.workspace = true
 

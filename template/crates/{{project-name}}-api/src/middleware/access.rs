@@ -23,7 +23,6 @@ pub(crate) async fn access_log(request: Request, next: Next) -> Response {
         http.request.method = %request.method(),
         url.path = request.uri().path(),
         http.route = Empty,
-        http.response.status_code = Empty,
         client.address = Empty,
         client.port = Empty,
         network.protocol.version = protocol(request.version()),
@@ -67,7 +66,6 @@ impl Drop for Finished {
         let duration = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
         let _entered = self.span.enter();
         if let Some(status) = self.status {
-            self.span.record("http.response.status_code", status);
             tracing::event!(
                 target: "svc_api::access",
                 Level::INFO,

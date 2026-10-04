@@ -93,9 +93,22 @@ fn an_empty_filter_is_an_error_and_an_empty_rust_log_is_unset() -> TestResult {
     let done = finish(empty)?;
     assert_eq!(done.code, Some(78));
     assert!(done.stderr.contains("log.filter"), "{}", done.stderr);
+    let mut commas = command(&["check-config"]);
+    commas.env(format!("{}_LOG__FILTER", env_prefix()), ",");
+    assert_eq!(
+        finish(commas)?.code,
+        Some(78),
+        "a filter without directives turns logging off"
+    );
     let mut unset = command(&["check-config"]);
-    unset.env("RUST_LOG", "");
-    assert_eq!(finish(unset)?.code, Some(0));
+    unset
+        .env("RUST_LOG", "")
+        .env(format!("{}_CONFIG", env_prefix()), "");
+    assert_eq!(
+        finish(unset)?.code,
+        Some(0),
+        "an empty RUST_LOG or config variable is unset"
+    );
     Ok(())
 }
 

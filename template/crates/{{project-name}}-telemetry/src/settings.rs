@@ -122,7 +122,35 @@ fn file_filter<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::
 }
 
 fn check<E: de::Error>(text: &str) -> Result<(), E> {
+    // `,` alone parses, as a filter without directives that turns everything off.
+    if text.split(',').all(|directive| directive.trim().is_empty()) {
+        return Err(E::custom("not a valid log filter: it has no directive"));
+    }
     EnvFilter::try_new(text)
         .map(drop)
         .map_err(|error| E::custom(format!("not a valid log filter: {error}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LogSettings;
+
+    fn filter_problem(filter: &str) -> Option<String> {
+        let text = format!(
+            "format = \"auto\"\nfilter = {filter:?}\ncolor = \"auto\"\n[file]\nenabled = false\ndir = \"logs\"\nfilter = \"\"\nmax_archives = 14\n"
+        );
+        toml::from_str::<LogSettings>(&text)
+            .err()
+            .map(|e| e.message().to_string())
+    }
+
+    #[test]
+    fn a_filter_needs_a_directive() {
+        assert_eq!(filter_problem("info"), None);
+        assert_eq!(filter_problem(""), Some("must not be empty".to_string()));
+        let none = Some("not a valid log filter: it has no directive".to_string());
+        assert_eq!(filter_problem(","), none);
+        assert_eq!(filter_problem(" , "), none);
+        assert!(filter_problem("[").is_some_and(|m| m.starts_with("not a valid log filter")));
+    }
 }

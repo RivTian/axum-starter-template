@@ -7,7 +7,7 @@ use serde::Serialize;
 use toml::Value;
 
 use crate::load::Loaded;
-use crate::source::Source;
+use crate::source::{Source, printable};
 
 /// One key: its name, its value as shown, and where the value came from.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -21,7 +21,7 @@ pub struct Row {
     pub source: Source,
 }
 
-/// Every key, in key order. A secret shows as `<redacted>`, as it serializes.
+/// Every key, in key order.
 #[must_use]
 pub fn rows<T: Serialize>(loaded: &Loaded<T>) -> Vec<Row> {
     let values = Value::try_from(&loaded.config).ok();
@@ -34,7 +34,7 @@ pub fn rows<T: Serialize>(loaded: &Loaded<T>) -> Vec<Row> {
     };
     (loaded.sources.iter())
         .map(|(key, source)| Row {
-            key: key.to_string(),
+            key: printable(key),
             value: value_of(key).unwrap_or_default(),
             source: source.clone(),
         })

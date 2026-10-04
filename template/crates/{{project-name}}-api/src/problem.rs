@@ -114,7 +114,8 @@ fn needs_problem(response: &Response) -> bool {
 }
 
 /// A problem document. `type` is a URN for client errors of an error kind and `about:blank`
-/// otherwise; `detail` appears only when the outcome exposes it and the error has a context.
+/// otherwise; `title` is the kind's title, or the status reason when it has none; `detail`
+/// appears only when the outcome exposes it and the error has a context.
 #[derive(Debug, Serialize)]
 struct Problem {
     #[serde(rename = "type")]
@@ -139,13 +140,12 @@ impl Problem {
         let (kind, title) = match error.etype() {
             ErrorType::Kind(kind) if status.is_client_error() => (
                 format!("urn:{service}:problem:{}", kebab(kind.name())),
-                kind.title().to_string(),
+                kind.title(),
             ),
-            _ => (
-                "about:blank".to_string(),
-                status.canonical_reason().unwrap_or("Error").to_string(),
-            ),
+            _ => ("about:blank".to_string(), None),
         };
+        let reason = || status.canonical_reason().unwrap_or("Error");
+        let title = title.unwrap_or_else(reason).to_string();
         Problem {
             kind,
             title,

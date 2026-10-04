@@ -3,5 +3,4 @@
 pub use crate::error::{
     BError, Class, Context, Error, ErrorKind, ErrorSource, ErrorType, OkOrErr, OrErr, Result,
 };
-pub use crate::secret::Secret;
 pub use crate::{log_at_level, log_error};

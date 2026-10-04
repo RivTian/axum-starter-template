@@ -8,16 +8,16 @@ use toml::{Table, Value};
 use super::keys::{join, toml_key};
 use super::layered::Layered;
 use crate::report::Problem;
-use crate::source::Source;
+use crate::source::{Source, printable};
 
 impl Layered {
     /// Reads the file: it may be unreadable or not valid TOML, and every key must be in the
-    /// schema. A secret given as an integer or a boolean becomes a string.
+    /// schema.
     pub(super) fn merge_file(&mut self, path: &Path) {
         let text = match fs::read_to_string(path) {
             Ok(text) => text,
             Err(error) => {
-                let detail = format!("file {} cannot be read: {error}", path.display());
+                let detail = format!("file {} cannot be read: {error}", shown_path(path));
                 self.problems.push(Problem::whole(&detail));
                 return;
             }
@@ -50,16 +50,7 @@ impl Layered {
                     self.problems.push(problem);
                 }
             } else if self.leaves.contains(&key) {
-                let value = match value {
-                    Value::Integer(number) if self.secrets.contains(&key) => {
-                        Value::String(number.to_string())
-                    }
-                    Value::Boolean(flag) if self.secrets.contains(&key) => {
-                        Value::String(flag.to_string())
-                    }
-                    _ => value.clone(),
-                };
-                self.set(&key, value, source.clone());
+                self.set(&key, value.clone(), source.clone());
             } else {
                 self.problems.push(Problem::at(&key, source, "unknown key"));
             }
@@ -78,7 +69,11 @@ fn not_valid_toml(path: &Path, text: &str, error: &toml::de::Error) -> String {
         None => String::new(),
     };
     let reason = error.message();
-    format!("file {} is not valid TOML{at}: {reason}", path.display())
+    format!("file {} is not valid TOML{at}: {reason}", shown_path(path))
+}
+
+fn shown_path(path: &Path) -> String {
+    printable(&path.display().to_string())
 }
 
 /// The 1-based line and column (in characters) of a byte offset, as TOML parsers count.

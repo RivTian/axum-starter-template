@@ -52,6 +52,9 @@ pub struct Fields {
     /// `error.chain`: the type names along the cause chain, comma separated; foreign errors
     /// appear as `external`.
     pub chain: String,
+    /// `error.cause`: the text of the first foreign error in the chain, such as
+    /// `Address already in use (os error 48)`; empty when there is none.
+    pub cause: String,
 }
 
 impl Error {
@@ -89,6 +92,11 @@ impl Error {
                 .map(|context| context.as_str().to_string())
                 .unwrap_or_default(),
             chain: chain.join(","),
+            cause: self
+                .chain()
+                .find(|hop| hop.downcast_ref::<Error>().is_none())
+                .map(ToString::to_string)
+                .unwrap_or_default(),
         }
     }
 }
@@ -100,16 +108,10 @@ mod tests {
 
     use crate::error::{Class, Error, ErrorKind, ErrorType};
 
-    const TODO_MISSING: ErrorType = ErrorType::Kind(&ErrorKind::new(
-        "TodoMissing",
-        Class::NotFound,
-        "Todo missing",
-    ));
-    const STORE_BROKEN: ErrorType = ErrorType::Kind(&ErrorKind::new(
-        "StoreBroken",
-        Class::Unavailable,
-        "Store broken",
-    ));
+    const TODO_MISSING: ErrorType =
+        ErrorType::Kind(&ErrorKind::new("TodoMissing", Class::NotFound).titled("Todo missing"));
+    const STORE_BROKEN: ErrorType =
+        ErrorType::Kind(&ErrorKind::new("StoreBroken", Class::Unavailable).titled("Store broken"));
 
     fn names(error: &Error) -> Vec<String> {
         error
@@ -164,5 +166,12 @@ mod tests {
         );
         assert_eq!(fields.context, "while loading");
         assert_eq!(fields.chain, "TodoMissing,StoreBroken");
+        assert_eq!(fields.cause, "");
+        let foreign = Error::because(
+            STORE_BROKEN,
+            "write failed",
+            std::io::Error::other("disk full"),
+        );
+        assert_eq!(foreign.fields().cause, "disk full");
     }
 }

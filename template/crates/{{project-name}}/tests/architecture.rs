@@ -16,7 +16,7 @@ use cargo_metadata::{DependencyKind, MetadataCommand};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
-/// The members each member may depend on through normal and build dependencies, by role.
+/// The members each member may depend on, by role; dev-dependencies may also use test-utils.
 const ALLOWED: &[(&str, &[&str])] = &[
     ("util", &[]),
     ("domain", &["util"]),
@@ -102,7 +102,7 @@ struct Member {
 struct Node {
     name: String,
     proc_macro: bool,
-    /// Packages reached through normal and build dependencies.
+    /// Packages reached through normal dependencies.
     runtime_deps: Vec<String>,
 }
 
@@ -144,9 +144,7 @@ fn describe() -> Result<Ws, Box<dyn Error>> {
     let mut graph = BTreeMap::new();
     for node in &resolve.nodes {
         let pkg = &meta[&node.id];
-        let runtime = |k: &cargo_metadata::DepKindInfo| {
-            matches!(k.kind, DependencyKind::Normal | DependencyKind::Build)
-        };
+        let runtime = |k: &cargo_metadata::DepKindInfo| k.kind == DependencyKind::Normal;
         let node_data = Node {
             name: pkg.name.to_string(),
             proc_macro: pkg
@@ -209,8 +207,9 @@ fn workspace() -> Result<Ws, Box<dyn Error>> {
 
 // ---- check: a pure function of the description -------------------------------------------
 
-/// Packages reachable from `start` at run time, each with the path to it. Proc-macros are
-/// listed but not followed: their dependencies only run at compile time.
+/// Packages reachable from `start` at run time, each with the path to it: normal dependencies
+/// only, since build scripts run at compile time; proc-macros are listed but not followed, for
+/// the same reason.
 fn closure(graph: &BTreeMap<String, Node>, start: &str) -> Vec<(String, String)> {
     let mut seen = BTreeSet::from([start.to_string()]);
     let mut queue = vec![(start.to_string(), String::new())];
@@ -396,6 +395,17 @@ fn the_domain_reaches_no_io_crate() -> TestResult {
     let rules = rules_after(|ws| {
         let node = member(ws, "domain")?.node.clone();
         add_path(ws, &node, &[("some-lib", false), ("tokio", false)]);
+        Ok(())
+    })?;
+    assert_eq!(rules, ["closure"]);
+    Ok(())
+}
+
+#[test]
+fn the_runtime_reaches_no_http_stack() -> TestResult {
+    let rules = rules_after(|ws| {
+        let node = member(ws, "runtime")?.node.clone();
+        add_path(ws, &node, &[("some-lib", false), ("hyper", false)]);
         Ok(())
     })?;
     assert_eq!(rules, ["closure"]);

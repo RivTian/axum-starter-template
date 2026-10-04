@@ -1,9 +1,9 @@
 //! The supervisor: starts every service, feeds everything that happens into one ordered
-//! channel, and carries out what the state machine in `table` decides. Readiness, exits,
+//! channel, and carries out what the state machine in `machine` decides. Readiness, exits,
 //! panics, signals and timers all arrive through that channel and are handled one at a time,
 //! so the same sequence of inputs always ends the same way.
 
-mod table;
+mod machine;
 
 use std::any::Any;
 
@@ -15,7 +15,7 @@ use crate::phase::{Phase, PhaseWatch};
 use crate::service::{Service, ServiceContext, ServiceKind};
 use crate::settings::LifecycleSettings;
 use crate::signal::{Signal, SignalSource};
-use table::{Effect, State};
+use machine::{Effect, State};
 
 /// How a run ended. The binary maps each outcome to an exit code.
 #[derive(Debug)]
@@ -138,8 +138,10 @@ impl Supervisor {
             });
         }
         let forwarder = tokio::spawn(forward(signals, events.clone()));
+        let reason = "the process started";
         tracing::info!(
             phase = "starting",
+            reason,
             services = services.len(),
             "phase changed"
         );
@@ -147,8 +149,12 @@ impl Supervisor {
         self.start(Timer::Startup, &events);
         // `events` lives until the end of this function, so the channel never closes.
         while let Some(input) = inputs.recv().await {
-            if let Input::Exited(index, exit) = &input {
-                log_exit(services[*index].0, exit);
+            match &input {
+                Input::Exited(index, exit) => log_exit(services[*index].0, exit),
+                Input::Signal(Signal::Hangup) => {
+                    tracing::warn!(signal = "SIGHUP", "reloading is not supported; ignored");
+                }
+                _ => {}
             }
             for effect in state.step(input) {
                 match effect {

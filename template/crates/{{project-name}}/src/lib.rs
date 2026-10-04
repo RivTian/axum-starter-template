@@ -1,6 +1,7 @@
 //! The service binary and its composition root: the command line, the root configuration,
 //! the wiring of the services, and the exit code. The binary in `main.rs` only calls
-//! [`main`]; the logic lives in this library so that tests can reach it.
+//! [`main`]; the modules live in this library, documented and linted like every other
+//! crate's.
 
 mod bootstrap;
 mod build_info;

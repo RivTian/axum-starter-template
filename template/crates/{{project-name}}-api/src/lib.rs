@@ -7,8 +7,8 @@
 
 pub mod error;
 mod extract;
-mod health;
 mod middleware;
+mod probes;
 pub mod problem;
 pub mod response;
 pub mod router;

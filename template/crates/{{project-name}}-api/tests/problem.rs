@@ -8,9 +8,7 @@ use tracing::Level;
 
 fn kind(class: Class) -> ErrorType {
     // A leaked kind is fine in a test: each lives until the process ends.
-    ErrorType::Kind(Box::leak(Box::new(ErrorKind::new(
-        "Sample", class, "Sample",
-    ))))
+    ErrorType::Kind(Box::leak(Box::new(ErrorKind::new("Sample", class))))
 }
 
 fn status(class: Class, upstream: bool) -> u16 {
