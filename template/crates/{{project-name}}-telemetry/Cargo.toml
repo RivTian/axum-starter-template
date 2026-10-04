@@ -1,0 +1,20 @@
+[package]
+name = "{{project-name}}-telemetry"
+description = "Logging: output layers, rolling log files and the panic hook."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+{% if license != "None" -%}
+license.workspace = true
+{% endif -%}
+publish.workspace = true
+
+[lib]
+name = "svc_telemetry"
+
+[dependencies]
+{{project-name}}-util.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

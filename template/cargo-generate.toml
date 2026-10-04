@@ -1,0 +1,47 @@
+[template]
+cargo_generate_version = ">=0.24.0"
+# Rust sources and workflows are copied as they are: macro bodies, format strings and
+# GitHub Actions expressions use braces that Liquid would try to interpret. The two Rust
+# files that carry the project name are the only exceptions.
+exclude = [
+  "crates/**/*.rs",
+  "!crates/*/src/names.rs",
+  "!crates/*/tests/support/bin.rs",
+  ".github/workflows/*.yml",
+]
+
+[placeholders.license]
+type = "string"
+prompt = "License for the generated project"
+choices = ["MIT", "Apache-2.0", "None"]
+default = "MIT"
+
+[placeholders.with_docker]
+type = "bool"
+prompt = "Include a Dockerfile (distroless image with a built-in health probe)?"
+default = true
+
+[placeholders.with_ci]
+type = "bool"
+prompt = "Include GitHub Actions workflows (CI, release, image)?"
+default = true
+
+# The pre hook renames the chosen license file to LICENSE; these rules drop the others.
+[conditional.'license == "None"']
+ignore = ["LICENSE-MIT", "LICENSE-APACHE"]
+
+[conditional.'license == "MIT"']
+ignore = ["LICENSE-APACHE"]
+
+[conditional.'license == "Apache-2.0"']
+ignore = ["LICENSE-MIT"]
+
+[conditional.'!with_docker']
+ignore = ["Dockerfile", ".dockerignore", ".github/workflows/docker.yml"]
+
+[conditional.'!with_ci']
+ignore = [".github"]
+
+[hooks]
+init = ["hooks/init.rhai"]
+pre = ["hooks/pre.rhai"]

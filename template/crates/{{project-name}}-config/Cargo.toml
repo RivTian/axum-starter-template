@@ -1,0 +1,16 @@
+[package]
+name = "{{project-name}}-config"
+description = "Layered configuration loading: sources, merging and the list of problems."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+{% if license != "None" -%}
+license.workspace = true
+{% endif -%}
+publish.workspace = true
+
+[lib]
+name = "svc_config"
+
+[lints]
+workspace = true

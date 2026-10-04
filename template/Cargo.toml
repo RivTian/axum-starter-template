@@ -1,0 +1,57 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+{% if license != "None" -%}
+license = "{{license}}"
+{% endif -%}
+publish = false
+
+[workspace.dependencies]
+{{project-name}} = { path = "crates/{{project-name}}" }
+{{project-name}}-api = { path = "crates/{{project-name}}-api" }
+{{project-name}}-infra = { path = "crates/{{project-name}}-infra" }
+{{project-name}}-runtime = { path = "crates/{{project-name}}-runtime" }
+{{project-name}}-telemetry = { path = "crates/{{project-name}}-telemetry" }
+{{project-name}}-domain = { path = "crates/{{project-name}}-domain" }
+{{project-name}}-config = { path = "crates/{{project-name}}-config" }
+{{project-name}}-util = { path = "crates/{{project-name}}-util" }
+{{project-name}}-test-utils = { path = "crates/{{project-name}}-test-utils" }
+async-trait = { version = "0.1.92", default-features = false }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio", "matched-path", "query"] }
+cargo_metadata = { version = "0.23.1", default-features = false }
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
+tower-http = { version = "0.7.1", default-features = false, features = ["catch-panic"] }
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+http-body-util = { version = "0.1.5", default-features = false }
+serde = { version = "1.0.229", default-features = false, features = ["std"] }
+serde_json = { version = "1.0.151", default-features = false, features = ["std"] }
+time = { version = "0.3.55", default-features = false, features = ["std", "formatting", "macros"] }
+tokio = { version = "1.53.1", default-features = false, features = ["rt-multi-thread", "net", "signal", "time", "sync", "macros"] }
+toml = { version = "1.1.6", default-features = false, features = ["std", "parse", "serde"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["std", "registry", "fmt", "ansi", "json", "env-filter", "tracing-log", "time"] }
+uuid = { version = "1.26.1", default-features = false, features = ["std", "v7"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tokio_unstable)"] }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Every fallible function returns the workspace error type, which is a boxed struct.
+unnecessary_box_returns = "allow"
+# Tests follow the same rules: they return Result and use `?` instead of unwrap or expect.
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+await_holding_lock = "deny"
+# Output goes through the binary's one output function or through logging.
+print_stdout = "deny"
+print_stderr = "deny"

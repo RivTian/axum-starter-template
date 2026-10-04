@@ -1,0 +1,8 @@
+# Build output of any cargo command run from the repository root.
+target/
+
+# Rendered projects are produced in temporary directories and never committed.
+/generated/
+
+# macOS Finder metadata.
+.DS_Store

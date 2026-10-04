@@ -1,0 +1,8 @@
+# Build output.
+/target
+
+# Log files written when log.file.enabled = true.
+/logs
+
+# Release archives written by `just package`.
+/dist

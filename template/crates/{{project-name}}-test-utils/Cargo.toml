@@ -1,0 +1,27 @@
+[package]
+name = "{{project-name}}-test-utils"
+description = "Test doubles and shared test helpers, used only as a dev-dependency."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+{% if license != "None" -%}
+license.workspace = true
+{% endif -%}
+publish.workspace = true
+
+[lib]
+name = "svc_test_utils"
+
+[dependencies]
+{{project-name}}-domain.workspace = true
+{{project-name}}-runtime.workspace = true
+{{project-name}}-util.workspace = true
+async-trait.workspace = true
+serde_json.workspace = true
+time.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

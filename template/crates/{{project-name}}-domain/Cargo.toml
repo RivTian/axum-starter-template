@@ -1,0 +1,26 @@
+[package]
+name = "{{project-name}}-domain"
+description = "The business model: entities, use cases, ports and domain events, without I/O."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+{% if license != "None" -%}
+license.workspace = true
+{% endif -%}
+publish.workspace = true
+
+[lib]
+name = "svc_domain"
+
+[dependencies]
+{{project-name}}-util.workspace = true
+async-trait.workspace = true
+time.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+{{project-name}}-test-utils.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,34 @@
+[package]
+name = "{{project-name}}-api"
+description = "The HTTP interface: routes, the response contract and the health endpoints."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+{% if license != "None" -%}
+license.workspace = true
+{% endif -%}
+publish.workspace = true
+
+[lib]
+name = "svc_api"
+
+[dependencies]
+{{project-name}}-domain.workspace = true
+{{project-name}}-runtime.workspace = true
+{{project-name}}-util.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+{{project-name}}-test-utils.workspace = true
+http-body-util.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true

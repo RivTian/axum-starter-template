@@ -1,0 +1,5 @@
+# Settings for typos (https://github.com/crate-ci/typos).
+
+[default.extend-words]
+# A field of the error type ("error source"), not a misspelling of "resource".
+esource = "esource"

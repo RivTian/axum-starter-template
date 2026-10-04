@@ -1,0 +1,49 @@
+# Recipes of {{project-name}}. They use no just interpolation: ${CARGO_LOCKED:-} is a shell
+# variable, which CI sets to --locked so that builds use the committed Cargo.lock.
+
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+# List the recipes.
+default:
+    @just --list
+
+# Every quality check, in the order CI runs them.
+check: fmt-check lint test doc typos machete deny
+
+# Format the code.
+fmt:
+    cargo fmt --all
+
+# Check the formatting.
+fmt-check:
+    cargo fmt --all --check
+
+# Clippy on every target, with default and with all features.
+lint:
+    cargo clippy --workspace --all-targets ${CARGO_LOCKED:-} -- -D warnings
+    cargo clippy --workspace --all-targets --all-features ${CARGO_LOCKED:-} -- -D warnings
+
+# Tests and doctests.
+test:
+    cargo nextest run --workspace ${CARGO_LOCKED:-}
+    cargo test --workspace --doc ${CARGO_LOCKED:-}
+
+# API documentation, without warnings.
+doc:
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps ${CARGO_LOCKED:-}
+
+# Spelling.
+typos:
+    typos
+
+# Unused dependencies. --with-metadata, because the library targets are renamed to svc_*.
+machete:
+    cargo machete --with-metadata
+
+# Licenses, security advisories and sources of the dependencies.
+deny:
+    cargo deny check
+
+# The oldest supported Rust.
+msrv:
+    cargo +1.88 check --workspace --all-targets ${CARGO_LOCKED:-}

@@ -1,0 +1,6 @@
+id	name	license	with_docker	with_ci
+m1	qx	None	false	false
+m2	acme-svc	MIT	true	true
+m3	zeta-ledger-payment-gateway-x	Apache-2.0	true	false
+m4	kappa-service-with-a-deliberately-long-name-to-reach-the-limit64	MIT	false	true
+m5	omega-svc	None	true	false

@@ -1,0 +1,19 @@
+[package]
+name = "{{project-name}}-util"
+description = "Leaf crate: the shared error type and small pure helpers."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+{% if license != "None" -%}
+license.workspace = true
+{% endif -%}
+publish.workspace = true
+
+[lib]
+name = "svc_util"
+
+[dependencies]
+tracing.workspace = true
+
+[lints]
+workspace = true
