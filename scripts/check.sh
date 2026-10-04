@@ -93,12 +93,14 @@ serves() {
 
 archive_holds() {
   # The release archive holds the binary, README.md, THIRD_PARTY_NOTICES.md and LICENSE
-  # exactly when the project has one.
+  # exactly when the project has one, and its SHA-256 file checks it.
   local name="$1" archive actual expected
   archive="$(ls dist/"$name"-*.tar.gz)" || return 1
   actual="$(tar -tzf "$archive" | sed 's#^[^/]*/##' | grep -v '^$' | sort | tr '\n' ' ')" || return 1
   expected="$( { printf '%s\n' "$name" README.md THIRD_PARTY_NOTICES.md; if [ -f LICENSE ]; then echo LICENSE; fi; } | sort | tr '\n' ' ')"
   [ "$actual" = "$expected" ] || { echo "archive: $actual; expected: $expected"; return 1; }
+  # The checksum next to the archive verifies it.
+  (cd dist && shasum -a 256 -c "$(basename "$archive").sha256") || return 1
 }
 
 ci_needs_lock() {

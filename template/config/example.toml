@@ -17,6 +17,9 @@ http_addr = "127.0.0.1:8080"
 request_timeout = "15s"
 # A larger request body gets 413. 1 to 67108864.
 body_limit_bytes = 1048576
+# Origins browsers may call the API from, such as ["https://app.example.com"], or ["*"]
+# for any; empty turns CORS off. A variable or flag gives them separated by commas.
+cors_origins = []
 
 [lifecycle]
 # Every service must be ready within this time. 1s to 600s.

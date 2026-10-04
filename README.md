@@ -33,14 +33,18 @@ cargo generate RivTian/rs-starter-template
 | `just check [ids]`  | Render and run each project's own `just check`                                             |
 | `just full [ids]`   | Render and run the full check: smoke runs, MSRV, console, package, lock-file errors, image |
 | `just commit`       | The per-commit tier: lint, then render and check `m2`                                      |
-| `just compare`      | Render with `CG_MIN` and `CG_LATEST` and require identical output                          |
-| `just names`        | The project-name rules, with `CG_MIN` and `CG_LATEST`                                      |
+| `just names`        | The project-name rules                                                                     |
 | `just version-info` | The version information scenarios                                                          |
+| `just ci`           | Everything the template CI runs, in the same order                                         |
 
 Rendered projects land in `$TMPDIR/rs-starter-template-render/<id>/<name>`; set
 `RENDER_DIR` to use another directory and `CG` to use another cargo-generate. The full check
 builds container images only under the tag `rs-starter-template-check-<name>` and removes
 them afterwards.
+
+The template requires and is tested with one cargo-generate version, set in
+`template/cargo-generate.toml` and in `.github/workflows/template-ci.yml`; raise both together.
+`just ci` runs what CI runs, with the `cargo-generate` on `PATH`.
 
 To update the vendored pingora-error, change the pinned commit and hashes in
 `scripts/vendor-pingora-error.py`, run it, and review the diff.

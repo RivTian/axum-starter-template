@@ -30,6 +30,10 @@ struct Api {
 }
 
 fn api() -> Api {
+    api_with(Vec::new())
+}
+
+fn api_with(cors_origins: Vec<String>) -> Api {
     let repository = Arc::new(FakeTodoRepository::default());
     let todos = TodoUseCases::new(
         repository.clone(),
@@ -41,6 +45,7 @@ fn api() -> Api {
     let settings = ServerSettings {
         request_timeout: Duration::from_secs(1),
         body_limit_bytes: 64,
+        cors_origins,
         ..ServerSettings::default()
     };
     Api {
@@ -369,5 +374,72 @@ async fn a_path_that_is_not_utf8_gets_a_fixed_reason() -> TestResult {
         answer.body["detail"],
         "invalid path parameter: not valid UTF-8 text"
     );
+    Ok(())
+}
+
+fn from(
+    origin: &str,
+    method: Method,
+    uri: &str,
+) -> std::result::Result<Request<Body>, Box<dyn StdError>> {
+    let request = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("origin", origin);
+    Ok(request.body(Body::empty())?)
+}
+
+#[tokio::test]
+async fn cors_is_off_unless_origins_are_configured() -> TestResult {
+    let answer = api()
+        .send(from("https://app.example", Method::GET, "/livez")?)
+        .await?;
+    assert_eq!(answer.header("access-control-allow-origin"), None);
+    Ok(())
+}
+
+#[tokio::test]
+async fn listed_origins_get_cors_headers_on_preflights_successes_and_problems() -> TestResult {
+    let api = api_with(vec!["https://app.example".to_string()]);
+    let preflight = Request::builder()
+        .method(Method::OPTIONS)
+        .uri("/v1/todos")
+        .header("origin", "https://app.example")
+        .header("access-control-request-method", "POST")
+        .header("access-control-request-headers", "content-type")
+        .body(Body::empty())?;
+    let answer = api.send(preflight).await?;
+    assert_eq!(answer.status, StatusCode::OK);
+    assert_eq!(
+        answer.header("access-control-allow-origin"),
+        Some("https://app.example")
+    );
+    let problem = api
+        .send(from("https://app.example", Method::GET, "/nowhere")?)
+        .await?;
+    assert_eq!(problem.status, StatusCode::NOT_FOUND);
+    assert_eq!(
+        problem.header("access-control-allow-origin"),
+        Some("https://app.example")
+    );
+    assert!(
+        problem
+            .header("access-control-expose-headers")
+            .is_some_and(|h| h.contains("x-request-id"))
+    );
+    let other = api
+        .send(from("https://evil.example", Method::GET, "/livez")?)
+        .await?;
+    assert_eq!(other.header("access-control-allow-origin"), None);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_star_allows_any_origin() -> TestResult {
+    let api = api_with(vec!["*".to_string()]);
+    let answer = api
+        .send(from("https://anything.example", Method::GET, "/livez")?)
+        .await?;
+    assert_eq!(answer.header("access-control-allow-origin"), Some("*"));
     Ok(())
 }

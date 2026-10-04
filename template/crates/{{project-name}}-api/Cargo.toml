@@ -29,6 +29,7 @@ uuid.workspace = true
 {{project-name}}-test-utils.workspace = true
 http-body-util.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
+toml.workspace = true
 tower.workspace = true
 
 [lints]

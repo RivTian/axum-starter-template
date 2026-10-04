@@ -11,9 +11,9 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # Oldest supported and latest cargo-generate; `just compare` requires identical output.
-  CG_MIN_VERSION: 0.24.0
-  CG_LATEST_VERSION: 0.25.0
+  # The cargo-generate version the template supports and is tested with; keep it equal to
+  # cargo_generate_version in template/cargo-generate.toml.
+  CG_VERSION: 0.25.0
 
 jobs:
   lint:
@@ -61,15 +61,13 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cg
-          key: cargo-generate-${{ runner.os }}-${{ env.CG_MIN_VERSION }}-${{ env.CG_LATEST_VERSION }}
+          key: cargo-generate-${{ runner.os }}-${{ env.CG_VERSION }}
       - name: Install cargo-generate
         run: |
-          for version in "$CG_MIN_VERSION" "$CG_LATEST_VERSION"; do
-            if [ ! -x "$HOME/.cg/$version/bin/cargo-generate" ]; then
-              cargo install --locked --quiet cargo-generate --version "$version" --root "$HOME/.cg/$version"
-            fi
-          done
-          echo "CG=$HOME/.cg/$CG_LATEST_VERSION/bin/cargo-generate" >> "$GITHUB_ENV"
+          if [ ! -x "$HOME/.cg/bin/cargo-generate" ]; then
+            cargo install --locked --quiet cargo-generate --version "$CG_VERSION" --root "$HOME/.cg"
+          fi
+          echo "CG=$HOME/.cg/bin/cargo-generate" >> "$GITHUB_ENV"
       # The full check: the generated project's own `just check`, MSRV, console, smoke runs,
       # the release archive, the lock-file errors and, for combinations with a Dockerfile,
       # the image build and smoke test (the runner has Docker).
@@ -78,7 +76,7 @@ jobs:
           COMBO: ${{ matrix.combo }}
         run: just full "$COMBO"
 
-  compare:
+  names:
     needs: lint
     runs-on: ubuntu-latest
     steps:
@@ -90,20 +88,15 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cg
-          key: cargo-generate-${{ runner.os }}-${{ env.CG_MIN_VERSION }}-${{ env.CG_LATEST_VERSION }}
+          key: cargo-generate-${{ runner.os }}-${{ env.CG_VERSION }}
       - name: Install cargo-generate
         run: |
-          for version in "$CG_MIN_VERSION" "$CG_LATEST_VERSION"; do
-            if [ ! -x "$HOME/.cg/$version/bin/cargo-generate" ]; then
-              cargo install --locked --quiet cargo-generate --version "$version" --root "$HOME/.cg/$version"
-            fi
-          done
-          {
-            echo "CG_MIN=$HOME/.cg/$CG_MIN_VERSION/bin/cargo-generate"
-            echo "CG_LATEST=$HOME/.cg/$CG_LATEST_VERSION/bin/cargo-generate"
-          } >> "$GITHUB_ENV"
+          if [ ! -x "$HOME/.cg/bin/cargo-generate" ]; then
+            cargo install --locked --quiet cargo-generate --version "$CG_VERSION" --root "$HOME/.cg"
+          fi
+          echo "CG=$HOME/.cg/bin/cargo-generate" >> "$GITHUB_ENV"
       - run: sudo apt-get update && sudo apt-get install -y expect
-      - run: just compare && just names
+      - run: just names
 
   version-info:
     needs: lint
@@ -119,13 +112,11 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cg
-          key: cargo-generate-${{ runner.os }}-${{ env.CG_MIN_VERSION }}-${{ env.CG_LATEST_VERSION }}
+          key: cargo-generate-${{ runner.os }}-${{ env.CG_VERSION }}
       - name: Install cargo-generate
         run: |
-          for version in "$CG_MIN_VERSION" "$CG_LATEST_VERSION"; do
-            if [ ! -x "$HOME/.cg/$version/bin/cargo-generate" ]; then
-              cargo install --locked --quiet cargo-generate --version "$version" --root "$HOME/.cg/$version"
-            fi
-          done
-          echo "CG=$HOME/.cg/$CG_LATEST_VERSION/bin/cargo-generate" >> "$GITHUB_ENV"
+          if [ ! -x "$HOME/.cg/bin/cargo-generate" ]; then
+            cargo install --locked --quiet cargo-generate --version "$CG_VERSION" --root "$HOME/.cg"
+          fi
+          echo "CG=$HOME/.cg/bin/cargo-generate" >> "$GITHUB_ENV"
       - run: just version-info

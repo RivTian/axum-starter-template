@@ -25,6 +25,7 @@ path = "src/main.rs"
 {{project-name}}-telemetry.workspace = true
 {{project-name}}-util.workspace = true
 clap.workspace = true
+mimalloc = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 tokio.workspace = true
 tracing.workspace = true
@@ -40,6 +41,8 @@ toml.workspace = true
 [features]
 # tokio-console support; build with RUSTFLAGS="--cfg tokio_unstable".
 console = ["{{project-name}}-telemetry/console"]
+# mimalloc instead of the system allocator.
+mimalloc = ["dep:mimalloc"]
 
 # cargo-machete reads only the lib, bin and test targets, not build.rs.
 [package.metadata.cargo-machete]

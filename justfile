@@ -4,8 +4,6 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 render_dir := env("RENDER_DIR", env("TMPDIR", "/tmp") + "/rs-starter-template-render")
 cg := env("CG", "cargo-generate")
-cg_min := env("CG_MIN", "cargo-generate")
-cg_latest := env("CG_LATEST", "cargo-generate")
 
 # List the recipes.
 default:
@@ -34,25 +32,13 @@ full *ids: (render ids)
 # The per-commit tier: lint, then render and check the default combination.
 commit: lint (check "m2")
 
-# Render with the oldest supported and the latest cargo-generate and require identical output.
-compare:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    min="$("{{cg_min}}" --version)"
-    latest="$("{{cg_latest}}" --version)"
-    if [ "$min" = "$latest" ]; then
-        echo "compare: set CG_MIN and CG_LATEST to two different cargo-generate versions (both are $min)" >&2
-        exit 2
-    fi
-    scripts/render.sh --cg "{{cg_min}}" --out "{{render_dir}}/compare-min"
-    scripts/render.sh --cg "{{cg_latest}}" --out "{{render_dir}}/compare-latest"
-    diff -r -x '*.log' "{{render_dir}}/compare-min" "{{render_dir}}/compare-latest"
-    echo "compare: $min and $latest render identical projects"
-
-# Project-name rules and that nothing prompts without a terminal, with CG_MIN and CG_LATEST.
+# Project-name rules and that nothing prompts without a terminal.
 names:
-    CG_MIN="{{cg_min}}" CG_LATEST="{{cg_latest}}" scripts/names.sh
+    CG="{{cg}}" scripts/names.sh
 
 # The binary's version information in six git scenarios, on the rendered m2 combination.
 version-info: (render "m2")
     scripts/version-info.sh --render-dir "{{render_dir}}"
+
+# Everything the template CI runs, in the same order.
+ci: lint full names version-info

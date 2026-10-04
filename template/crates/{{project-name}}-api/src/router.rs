@@ -13,7 +13,7 @@ use crate::{middleware, probes, todo};
 /// The router of the service, with its middleware, over the given state and settings.
 pub fn router(state: AppState, settings: &ServerSettings) -> Router {
     let problem_state = (state.clone(), settings.request_timeout);
-    Router::new()
+    let routes = Router::new()
         .route("/livez", get(probes::livez))
         .route("/readyz", get(probes::readyz))
         .route("/v1/todos", get(todo::list).post(todo::create))
@@ -23,7 +23,13 @@ pub fn router(state: AppState, settings: &ServerSettings) -> Router {
         .method_not_allowed_fallback(method_not_allowed)
         .layer(middleware::body_limit(settings.body_limit_bytes))
         .layer(middleware::catch_panic())
-        .layer(from_fn_with_state(problem_state, problem::render))
+        .layer(from_fn_with_state(problem_state, problem::render));
+    // Outside problem rendering, so that problem documents carry the CORS headers too.
+    let routes = match middleware::cors(&settings.cors_origins) {
+        Some(cors) => routes.layer(cors),
+        None => routes,
+    };
+    routes
         .layer(from_fn(middleware::access_log))
         .layer(from_fn(middleware::request_id))
         .with_state(state)

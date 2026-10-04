@@ -102,7 +102,9 @@ failure:
 
 The status gives the rest: 429, 503 and 504 are logged as warnings, other 5xx as errors,
 4xx at debug; `Retry-After: 1` comes with 429 and 503 when the error says a retry may help.
-A request that takes longer than `server.request_timeout` gets 503. A request id sent in
+A request that takes longer than `server.request_timeout` gets 503. Browsers may call the
+API from the origins in `server.cors_origins` (off when empty); problem documents carry the
+CORS headers too. A request id sent in
 `x-request-id` is kept when it is 1 to 128 of `A-Z a-z 0-9 . _ -`; otherwise the service
 makes a `UUIDv7`. Requests that the HTTP library rejects before routing, such as a
 malformed request line, get its own plain answer, not a problem document.

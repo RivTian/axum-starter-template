@@ -74,7 +74,8 @@ console-check:
     RUSTFLAGS="--cfg tokio_unstable" CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}/console" cargo check --bin {{project-name}} --features {{project-name}}/console ${CARGO_LOCKED:-}
 
 # A release archive: dist/{{project-name}}-<version>-<target>.tar.gz with the binary,
-# README.md, THIRD_PARTY_NOTICES.md and LICENSE (when there is one).
+# README.md, THIRD_PARTY_NOTICES.md and LICENSE (when there is one), and its SHA-256 next
+# to it, which `shasum -a 256 -c` checks.
 package:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -86,6 +87,7 @@ package:
     cp "${CARGO_TARGET_DIR:-target}/release/{{project-name}}" README.md THIRD_PARTY_NOTICES.md "dist/${name}/"
     if [ -f LICENSE ]; then cp LICENSE "dist/${name}/"; fi
     tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+    (cd dist && shasum -a 256 "${name}.tar.gz" > "${name}.tar.gz.sha256")
     echo "dist/${name}.tar.gz"
 {%- if with_docker %}
 

@@ -1,5 +1,5 @@
 [template]
-cargo_generate_version = ">=0.24.0"
+cargo_generate_version = ">=0.25.0"
 # Rust sources and workflows are copied as they are: macro bodies, format strings and
 # GitHub Actions expressions use braces that Liquid would try to interpret. The two Rust
 # files that carry the project name are the only exceptions.

@@ -1,9 +1,11 @@
 //! The middleware of every request, from the outside in: the request id, the request span
-//! with the access log, problem rendering with the request timeout (in [`crate::problem`]),
+//! with the access log, CORS when it is configured, problem rendering with the request
+//! timeout (in [`crate::problem`]),
 //! the panic catcher and the body limit. The last two are inside problem rendering, so their
 //! answers become problem documents too.
 
 mod access;
+mod cors;
 mod request_id;
 
 use std::any::Any;
@@ -14,6 +16,7 @@ use svc_util::prelude::*;
 use tower_http::catch_panic::CatchPanicLayer;
 
 pub(crate) use access::access_log;
+pub(crate) use cors::cors;
 pub(crate) use request_id::{RequestId, request_id};
 
 use crate::problem::pending;

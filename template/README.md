@@ -2,7 +2,8 @@
 
 An HTTP service in Rust: a workspace of nine crates in layers, a lifecycle with graceful
 shutdown, structured logging, layered configuration and a small example API for todos.
-`docs/architecture.md` explains how it is organised and where new code goes.
+`docs/architecture.md` explains how it is organised and where new code goes;
+`AGENTS.md` is the one-page version for people and coding agents making changes.
 
 ## Five minutes
 
@@ -90,10 +91,13 @@ cargo install --locked just cargo-nextest cargo-deny typos-cli cargo-machete
 | `just console` | Run with [tokio-console](https://github.com/tokio-rs/console) support |
 | `just console-check` | Check the console feature |
 | `just msrv` | Check that Rust 1.88 builds the project |
-| `just package` | Build `dist/{{project-name}}-<version>-<target>.tar.gz` |
+| `just package` | Build `dist/{{project-name}}-<version>-<target>.tar.gz` and its `.sha256` |
 {%- if with_docker %}
 | `just docker-build` | Build the image `{{project-name}}:dev` |
 {%- endif %}
+
+Build with `--features mimalloc` to replace the system allocator with
+[mimalloc](https://github.com/microsoft/mimalloc); measure whether it helps your load.
 
 The binary has three subcommands: `run`, `check-config` and `probe <URL>`, which sends one
 GET and exits 0 for a 2xx answer (the container health check uses it). Configuration
@@ -133,7 +137,7 @@ check calls the binary's `probe`. The license texts are in
 
 `.github/workflows/ci.yml` runs `just check`, the check with Rust 1.88 and the console check on
 every push and pull request. Pushing a tag such as `v0.1.0` builds the release archive and
-publishes it as a GitHub Release
+publishes it with its SHA-256 as a GitHub Release
 {%- if with_docker %}, and builds, smoke-tests and pushes the image to
 `ghcr.io/<owner>/<repository>`{% endif %}.
 {%- endif %}

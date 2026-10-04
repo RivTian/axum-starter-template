@@ -185,3 +185,42 @@
 
 - cargo-generate 0.25.0 的渲染一致性（`just compare`）：本机只有 0.24.0。
 - 模板 CI 与生成项目的 workflow 尚未在 GitHub 上运行；Actions 的主版本沿用 V4。
+
+## 补充 · 本地运行模板 CI
+
+- 根 `justfile` 新增 `just ci`：依次运行 `lint`、`full`、`compare`、`names`、`version-info`，与 `template-ci.yml` 一致。维护者 README 写明了用法。
+- cargo-generate 0.25.0 装在临时目录 `/tmp/rs6-cg/0.25.0`，未改动 `~/.cargo` 中已安装的工具。
+- `just compare`：0.24.0 与 0.25.0 渲染的 5 个组合完全一致。
+- `just ci`：m2 的镜像构建在容器内下载依赖时失败一次（`failed to get serde`，构建第 151 秒），同一轮的 m3、m5 成功；单独重跑 m2 的全量档全部通过，判定为网络抖动。`just ci` 在这一步停下，其后的 `names`（两个版本）与 `version-info` 单独补跑，全部通过。
+- 用户的 Docker 镜像在运行前后一致，没有残留的检查镜像或容器。
+- 至此 §9 的验收项全部有证据；仍未验证的只有 workflow 在 GitHub 上的实际运行。
+
+## V6.1 · 增补（参考 Quasar 后由用户认可的四项）
+
+**做了什么**（提交 `e19ddc9`、`a567f9f`、`99b3fa0`、`393e44b`）
+
+| 项                     | 改动                                                                                                                                                                                                                                      |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 可配置的 CORS          | api 的配置段新增 `server.cors_origins`（默认为空，即不启用）。文件里写数组，变量和命令行写逗号分隔的文本；每项须是 `http(s)://host[:port]`，`*` 只能单独使用。`tower_http::cors::CorsLayer` 放在 problem 中间件外侧，错误响应也带 CORS 头 |
+| release 产物加 sha256  | `just package` 在压缩包旁生成 `.sha256`；release workflow 一并发布；全量档用 `shasum -a 256 -c` 校验                                                                                                                                      |
+| 生成项目的 `AGENTS.md` | 一页：完成前的要求、各类代码放哪、守卫执行的规则、约定、常用命令                                                                                                                                                                          |
+| mimalloc 可选 feature  | bin 的 `mimalloc` feature，默认关闭；README 写明用法                                                                                                                                                                                      |
+
+**新增的配置键与依赖**（任务书 §8.5 要求先经用户同意；用户已认可）：`server.cors_origins`；tower-http 的 `cors` feature；`mimalloc`（MIT）。
+
+**检查**
+
+| 命令或操作                | 结果                                                                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `just commit`（每个提交） | 通过                                                                                                                                             |
+| CORS 测试                 | 默认不启用；列出的 origin 在预检、成功响应和 problem 上都带头；未列出的不带；`*` 放行任意 origin；配置的数组与逗号文本两种写法，以及非法值的拒绝 |
+| `check-config` 冒烟       | 环境变量给出的 origin 列表正确显示来源；`*` 与其他项混用以 78 退出                                                                               |
+| mimalloc                  | `--all-features` 下 clippy 与 `cargo deny` 通过；带该 feature 构建的二进制含 mimalloc 符号                                                       |
+| `just package`            | 生成的 `.sha256` 通过 `shasum -a 256 -c`                                                                                                         |
+| `just full m2 m5`         | 27 步全部通过，含 sha256 校验、镜像构建与冒烟；用户的 Docker 镜像前后一致                                                                        |
+
+## 补充 · 只支持一个 cargo-generate 版本
+
+- 用户把系统里的 cargo-generate 升到 0.25.0 后，`just ci` 仍报"两个版本相同"：`compare` 要用最老支持版本（0.24.0）和最新版本分别渲染，`CG_MIN` 与 `CG_LATEST` 默认都指向系统里的同一个版本。
+- 按用户的决定，改为只支持并只测试一个版本：`cargo_generate_version` 提到 `>=0.25.0`；删除 `compare`、`cg-versions` 与 `CG_MIN`/`CG_LATEST`；`names.sh` 用 `CG`（默认为系统里的 cargo-generate）；模板 CI 只安装 `CG_VERSION`（0.25.0），compare job 改为只跑 `just names`。这推翻了任务书沿用的 V5 D-14（`>=0.24.0` 并比对两个版本）。
+- 以后升级时，同时改 `template/cargo-generate.toml` 与 `template-ci.yml` 中的版本。
