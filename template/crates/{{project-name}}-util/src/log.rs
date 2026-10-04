@@ -2,14 +2,24 @@
 //! macros need only the `tracing` facade, which the calling crate depends on.
 
 /// Emits a `tracing` event at a level chosen at run time, for example the level the HTTP
-/// layer picks for a response.
+/// layer picks for a response, optionally with a target of its own.
 ///
 /// ```
 /// let level = tracing::Level::WARN;
 /// svc_util::log_at_level!(level, http.response.status_code = 503, "request failed");
+/// svc_util::log_at_level!(target: "svc_api::access", level, "request finished");
 /// ```
 #[macro_export]
 macro_rules! log_at_level {
+    (target: $target:expr, $level:expr, $($arg:tt)+) => {
+        match $level {
+            ::tracing::Level::ERROR => ::tracing::event!(target: $target, ::tracing::Level::ERROR, $($arg)+),
+            ::tracing::Level::WARN => ::tracing::event!(target: $target, ::tracing::Level::WARN, $($arg)+),
+            ::tracing::Level::INFO => ::tracing::event!(target: $target, ::tracing::Level::INFO, $($arg)+),
+            ::tracing::Level::DEBUG => ::tracing::event!(target: $target, ::tracing::Level::DEBUG, $($arg)+),
+            ::tracing::Level::TRACE => ::tracing::event!(target: $target, ::tracing::Level::TRACE, $($arg)+),
+        }
+    };
     ($level:expr, $($arg:tt)+) => {
         match $level {
             ::tracing::Level::ERROR => ::tracing::event!(::tracing::Level::ERROR, $($arg)+),

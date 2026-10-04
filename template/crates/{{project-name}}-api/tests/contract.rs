@@ -352,6 +352,20 @@ async fn a_failed_request_is_logged_once_with_the_error_fields() -> TestResult {
     Ok(())
 }
 
+#[tokio::test]
+async fn probe_requests_are_logged_at_debug_level_and_others_at_info() -> TestResult {
+    let (logs, _guard) = CapturedLogs::start();
+    let api = api();
+    for uri in ["/livez", "/readyz", "/v1/todos"] {
+        api.call(Method::GET, uri, None).await?;
+    }
+    let levels: Vec<Value> = (logs.with_message("request finished").iter())
+        .filter_map(|event| event.get("level").cloned())
+        .collect();
+    assert_eq!(levels, [json!("DEBUG"), json!("DEBUG"), json!("INFO")]);
+    Ok(())
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_request_the_client_gives_up_on_is_still_logged() -> TestResult {
     let (logs, _guard) = CapturedLogs::start();
@@ -363,6 +377,11 @@ async fn a_request_the_client_gives_up_on_is_still_logged() -> TestResult {
     let finished = logs.with_message("request finished");
     assert_eq!(finished.len(), 1);
     assert_eq!(finished[0].get("cancelled"), Some(&json!(true)));
+    // Seconds, on the paused clock: the client gave up after exactly 100 ms.
+    assert_eq!(
+        finished[0].get("http.server.request.duration"),
+        Some(&json!(0.1))
+    );
     Ok(())
 }
 

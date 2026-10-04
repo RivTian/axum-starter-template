@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use svc_config::load::{Inputs, Loaded, load};
-use svc_config::table::{overrides, render, rows};
+use svc_config::table::{file, overrides, render, rows};
 use svc_runtime::prelude::*;
 use svc_runtime::signal::UnixSignals;
 use svc_telemetry::subscriber::Environment;
@@ -62,7 +62,11 @@ pub(crate) fn run(args: &ConfigArgs) -> Exit {
         git_sha = sha,
         "starting"
     );
-    tracing::info!(overrides = overrides(&rows(&loaded)), "configuration");
+    tracing::info!(
+        config.file = file(&loaded),
+        overrides = overrides(&loaded),
+        "configuration"
+    );
     let code = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

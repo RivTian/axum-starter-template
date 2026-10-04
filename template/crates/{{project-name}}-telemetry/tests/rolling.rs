@@ -1,5 +1,7 @@
 //! The log file: rotation by UTC date and archive names, archiving at start by the date
-//! the old file was last written, retention, and compression that never holds up writes.
+//! the old file was last written or appending to it on the same date, retention,
+//! compression that never holds up writes, unfinished compressions, and a file or
+//! directory deleted while the writer runs.
 //! Time limits allow for debug builds: they bound what must stay fast and how long the
 //! work may take to finish, separately.
 
@@ -142,6 +144,80 @@ fn startup_archive_date() -> TestResult {
     );
     assert_eq!(gunzip(&archive)?, "left over\n");
     assert_eq!(fs::read_to_string(dir.join("app.log"))?, "");
+    Ok(())
+}
+
+#[test]
+fn a_restart_on_the_same_day_appends() -> TestResult {
+    let dir = TempDir::new("restart")?;
+    fs::write(dir.join("app.log"), "before the restart\n")?;
+    let clock = Clock::new(date!(2026 - 09 - 30));
+    for _ in 0..3 {
+        // Written earlier on the clock's date; the real time of the last write is today.
+        let file = File::options().append(true).open(dir.join("app.log"))?;
+        file.set_modified(SystemTime::from(datetime!(2026-09-30 08:00 UTC)))?;
+        drop(file);
+        let mut writer = RollingGzipWriter::open_with_clock(&dir.0, "app", 14, clock.source())?;
+        writer.write_all(b"after a restart\n")?;
+    }
+    // No archive, so no restart pushes an older day out of the 14 kept.
+    assert_eq!(dir.names()?, ["app.log"]);
+    assert_eq!(
+        fs::read_to_string(dir.join("app.log"))?,
+        "before the restart\nafter a restart\nafter a restart\nafter a restart\n"
+    );
+    Ok(())
+}
+
+#[test]
+fn unfinished_compressions_are_cleared_and_done_again() -> TestResult {
+    let dir = TempDir::new("unfinished")?;
+    // One whose archive is still there, and one whose archive is gone.
+    fs::write(dir.join("app.2026-01-15.log"), "left over\n")?;
+    fs::write(dir.join("app.2026-01-15.log.gz.tmp"), "half")?;
+    fs::write(dir.join("app.2026-01-14.log.gz.tmp"), "half")?;
+    let clock = Clock::new(date!(2026 - 09 - 30));
+    let _writer = RollingGzipWriter::open_with_clock(&dir.0, "app", 14, clock.source())?;
+    let done = || {
+        dir.names()
+            .is_ok_and(|names| names == ["app.2026-01-15.log.gz", "app.log"])
+    };
+    assert!(eventually(FINISH, done), "{:?}", dir.names()?);
+    assert_eq!(gunzip(&dir.join("app.2026-01-15.log.gz"))?, "left over\n");
+    Ok(())
+}
+
+#[test]
+fn a_deleted_directory_is_created_again_within_a_second() -> TestResult {
+    let dir = TempDir::new("deleted")?;
+    let logs = dir.join("logs");
+    let clock = Clock::new(date!(2026 - 09 - 30));
+    let mut writer = RollingGzipWriter::open_with_clock(&logs, "app", 14, clock.source())?;
+    writer.write_all(b"before\n")?;
+    writer.flush()?;
+    fs::remove_dir_all(&logs)?;
+    thread::sleep(Duration::from_millis(1100));
+    writer.write_all(b"after\n")?;
+    writer.flush()?;
+    assert_eq!(fs::read_to_string(logs.join("app.log"))?, "after\n");
+    assert_eq!(writer.failures(), 0);
+    Ok(())
+}
+
+#[test]
+fn failures_are_counted_where_the_writer_cannot_follow() -> TestResult {
+    let dir = TempDir::new("blocked")?;
+    let logs = dir.join("logs");
+    let clock = Clock::new(date!(2026 - 09 - 30));
+    let mut writer = RollingGzipWriter::open_with_clock(&logs, "app", 14, clock.source())?;
+    let failures = writer.failure_count();
+    // The directory becomes a file, so it cannot be created again.
+    fs::remove_dir_all(&logs)?;
+    fs::write(&logs, "not a directory")?;
+    thread::sleep(Duration::from_millis(1100));
+    writer.write_all(b"lost\n")?;
+    assert!(failures.count() >= 1, "{}", failures.count());
+    assert_eq!(writer.failures(), failures.count());
     Ok(())
 }
 

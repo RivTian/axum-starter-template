@@ -24,7 +24,7 @@ rule has a test that breaks it on purpose.
 | ----------------- | -------------------------------------------------------------------------------- | ------------------------------------------------ |
 | layers            | members depend only on the members listed for them                              | changes flow downwards; same-layer crates stay replaceable |
 | dev-only          | test-utils is only ever a dev-dependency                                         | test doubles never reach the binary              |
-| closure           | util, domain and config pull in no runtime or networking crate; runtime and telemetry pull in no HTTP stack | the domain and configuration can be tested anywhere; the runtime serves any transport |
+| closure           | with default features, util, domain and config pull in no runtime or networking crate, and runtime and telemetry pull in no HTTP stack (the optional `console` feature adds tokio-console's server) | the domain and configuration can be tested anywhere; the runtime serves any transport |
 | one-error-model   | no member depends directly on anyhow, eyre, color-eyre or failure                | one error type in the project's own code         |
 | workspace-versions | every dependency is declared in `[workspace.dependencies]`                      | one place to upgrade                             |
 | workspace-lints   | every member uses `[lints] workspace = true`                                     | one set of lints                                 |
@@ -33,9 +33,10 @@ rule has a test that breaks it on purpose.
 Inside a crate: one concept per module, features grouped as `todo.rs` with `todo/`, no
 `mod.rs` in `src`, at most one directory below a top-level module, and no file over 500
 lines apart from the vendored pingora-error file.
-`lib.rs` only declares modules; a top-level module may re-export items of its private
-submodules, so every public path has two segments, such as `svc_util::error::Error`. Crates
-that other crates use a lot (util, domain, runtime) also have a `prelude`.
+`lib.rs` only declares modules (the binary's also holds the `main` that `main.rs` calls); a
+top-level module may re-export items of its private submodules, so every public path has two
+segments, such as `svc_util::error::Error`. Crates that other crates use a lot (util,
+domain, runtime) also have a `prelude`.
 
 ## Where does a new feature go
 
@@ -66,15 +67,19 @@ pub const TODO_NOT_FOUND: ErrorType =
 Adapters mark failures of a dependency with `into_up()` and set `retry` when a retry may
 help. An error is logged once, where it is handled: by the HTTP layer when it answers, or by
 the supervisor when a service fails. The fields are `error.type`, `error.class`,
-`error.source`, `error.retry`, `error.context`, `error.chain` and `error.cause`, the text of
-the first error from outside the project, such as the operating system's. Lists of problems, such as
-an invalid configuration, are data and not errors.
+`error.source`, `error.retry`, `error.context` (every context along the chain, outermost
+first, such as `while loading: store is gone`), `error.chain` (the type names along it) and
+`error.cause`, the text of the first error from outside the project, such as the operating
+system's. A problem's `detail` is the outermost context only. Lists of problems, such as an
+invalid configuration, are data and not errors.
 
 ## HTTP contract
 
 A success is the resource itself as JSON: 200, 201 with `Location`, 202, or 204 without a
 body. A failure is an `application/problem+json` document, rendered by one middleware
-whatever produced it, the framework's own answers included:
+whatever produced it, the framework's own answers included: an answer without a body, or
+with the plain text of an extractor's rejection, whose text becomes the detail. A failure
+answered with JSON on purpose, such as `/readyz`, is left as it is.
 
 | Member       | Value                                                                                       |
 | ------------ | ------------------------------------------------------------------------------------------- |
@@ -85,8 +90,8 @@ whatever produced it, the framework's own answers included:
 | `instance`   | the request path                                                                            |
 | `request_id` | the same value as the `x-request-id` response header                                        |
 
-The class gives the status code; a client error caused by a dependency is this service's
-failure:
+The class gives the status code (an `HTTPStatus` error gives its own when it is 400 to 599,
+otherwise 500); a client error caused by a dependency is this service's failure:
 
 | Class             | Status | Caused by a dependency |
 | ----------------- | ------ | ---------------------- |
@@ -120,7 +125,7 @@ log) works behind it.
 | Phase      | `/readyz` | Enters when                                                         |
 | ---------- | --------- | ------------------------------------------------------------------- |
 | `starting` | 503       | the process starts                                                  |
-| `running`  | 200       | every service called `ready()`                                      |
+| `running`  | 200       | every service called `ready()`; logged with `startup.duration` in seconds |
 | `draining` | 503       | SIGTERM while running; requests are still served for `drain_delay`  |
 | `stopping` | 503       | after the drain delay, SIGINT, a failure, or startup failing; frontline services stop first, then background ones |
 | `stopped`  | -         | every service has stopped, or the deadline passed                   |
@@ -157,11 +162,15 @@ Sources, lowest priority first: the defaults; the file given with `--config` or
 unset); variables `{{project-name | shouty_snake_case}}_<SECTION>__<KEY>`, such as
 `{{project-name | shouty_snake_case}}_LOG__FILE__ENABLED=true`; and the flags `--http-addr`,
 `--log-filter` and `--log-format`. Prefixed variables without `__`, such as the ones
-Kubernetes adds for a Service of the same name, are ignored. Unknown keys are errors. Every
+Kubernetes adds for a Service of the same name, are ignored, except one that spells a key
+with `_` for `__`, such as `{{project-name | shouty_snake_case}}_SERVER_HTTP_ADDR`: that is
+an error naming the variable meant. Unknown keys are errors. Every
 problem is reported at once, one line each, with the key and where its value came from, and
 the process exits with 78. `check-config` runs the same checks and prints every key with its
-value and source; `run` logs the keys that differ from their defaults. Every value is shown
-as it is, so keep secrets out of the configuration.
+value and source. `run` logs `configuration` with `config.file`, the file it read (or
+`none`), and `overrides`, the keys whose value differs from the default, with their sources;
+a file that repeats a default does not appear. Every value is shown as it is, so keep
+secrets out of the configuration.
 
 A new key needs a deserializer from `svc_util::de` (or one of its own, as the log filters
 have): variables and flags give every value as text. Give it a default instead of making it
@@ -169,19 +178,28 @@ an `Option`, since the serialized defaults are the list of keys.
 
 ## Logging
 
-Logs go to stdout: text on a terminal, JSON otherwise. With `log.file.enabled = true` they
-also go to `<log.file.dir>/{{project-name}}.log`, rolled at UTC midnight into compressed
-archives, of which the newest `log.file.max_archives` are kept. Each output has its own
-filter; nothing filters them all. Every request runs in a span named `request` with
-`request_id`, created at error level so that warnings and errors carry it whatever the
-filter; `request finished` (target `svc_api::access`) closes each request, also one the
-client gave up on. A panic is logged with target `panic`, or written to stderr when that
-target is filtered out. `just console` runs with tokio-console support.
+Logs go to stdout: text on a terminal, JSON otherwise, one line per event either way;
+`log.format = "pretty"` (or `--log-format pretty`) spreads each event over several lines
+with its source location, for reading during development. A JSON line holds `timestamp`,
+`level`, `target`, the event's `fields` and the open `spans`, outermost first. With
+`log.file.enabled = true` they also go to `<log.file.dir>/{{project-name}}.log`, rolled at
+UTC midnight into compressed archives, of which the newest `log.file.max_archives` are kept;
+a restart appends to the day's file, and a file or directory deleted while the service runs
+is created again within a second. Problems with the file go to stderr: the first one when it
+happens, and at exit how many writes failed. Each output has its own filter; nothing filters
+them all. Every request runs in a span named `request` with `request_id`, created at error
+level so that warnings and errors carry it under any filter that lets errors of `svc_api`
+through; `request finished` (target `svc_api::access`) closes each request, also one the
+client gave up on, with `http.server.request.duration` in seconds; for `/livez` and
+`/readyz`, which orchestrators call every few seconds, at debug level. A panic is logged
+with target `panic`, or written to stderr when that target is filtered out. `just console`
+runs with tokio-console support.
 
 | Purpose                                  | Filter                       |
 | ---------------------------------------- | ---------------------------- |
 | the default                              | `info`                       |
 | without the access log                   | `info,svc_api::access=warn`  |
+| with the probe requests                  | `info,svc_api::access=debug` |
 | the reasons of 4xx answers               | `info,svc_api=debug`         |
 | only the lifecycle, warnings and errors  | `warn,svc_runtime=info`      |
 
@@ -192,7 +210,7 @@ target is filtered out. `just console` runs with tokio-console support.
 | unit          | `#[cfg(test)]` modules                      | one module's logic; the supervisor's table cell by cell |
 | crate         | each crate's `tests/`                       | a crate through its public items, with test-utils       |
 | HTTP contract | `crates/{{project-name}}-api/tests/`        | every response shape, through the router               |
-| supervisor    | `crates/{{project-name}}-runtime/tests/`    | scripted services on paused time, each scenario 50 times |
+| supervisor    | `crates/{{project-name}}-runtime/tests/`    | scripted services on paused time; the outcome of racing services over 300 runs on several threads |
 | process       | `crates/{{project-name}}/tests/process.rs`  | the real binary: exit codes, signals, `check-config`, `probe` |
 | architecture  | `crates/{{project-name}}/tests/architecture.rs` | the rules above                                     |
 

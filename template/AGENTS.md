@@ -33,7 +33,7 @@ this page is what to know before a change and what to do before calling it done.
 - Dependencies between crates point downwards only, along the table in
   `docs/architecture.md`; test-utils is only a dev-dependency.
 - util, domain and config pull in no async runtime or networking crate; runtime and
-  telemetry pull in no HTTP stack.
+  telemetry pull in no HTTP stack, with default features.
 - No crate depends directly on anyhow, eyre, color-eyre or failure.
 - Dependency versions live in `[workspace.dependencies]`; every crate uses the workspace
   lints.
@@ -57,7 +57,7 @@ Changing a rule means changing `docs/architecture.md` and the test in the same c
   `http.response.status_code`. `println!` and `eprintln!` are denied.
 - **Tests** return `Result` and use `?`; `unwrap`, `expect` and `panic!` are denied.
 - **Files** stay under 500 lines; a feature is `feature.rs` with a `feature/` directory, and
-  `lib.rs` only declares modules.
+  `lib.rs` only declares modules; the binary's also holds `main`.
 
 ## Commands
 

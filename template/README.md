@@ -128,7 +128,8 @@ docker run --rm -p 8080:8080 {{project-name}}:dev
 ```
 
 The image runs on distroless as a non-root user and listens on `0.0.0.0:8080`; its health
-check calls the binary's `probe`. The license texts are in
+check calls the binary's `probe` on `/livez`, so a container that drains or waits for a
+dependency stays healthy (traffic decisions belong to `/readyz`). The license texts are in
 `/usr/share/doc/{{project-name}}/`.
 {%- endif %}
 {%- if with_ci %}

@@ -93,7 +93,7 @@ for name in build com1; do
   expect_result "--name $name is reserved" "$status" 1 "$d" "" "$(reserved_message "$name")"
 done
 
-for name in tokio http-body; do
+for name in tokio http-body mimalloc; do
   status=0; generate "$cg" "$d" --silent --name "$name" || status=$?
   expect_result "--name $name is a dependency's name" "$status" 1 "$d" "" "$(dependency_message "$name")"
 done
@@ -102,7 +102,13 @@ status=0; CARGO_GENERATE_VALUE_PROJECT_NAME=qx-env generate "$cg" "$d" || status
 expect_result "CARGO_GENERATE_VALUE_PROJECT_NAME=qx-env is accepted" "$status" 0 "$d" "qx-env "
 
 status=0; CARGO_GENERATE_VALUE_PROJECT_NAME=x generate "$cg" "$d" || status=$?
-expect_result "CARGO_GENERATE_VALUE_PROJECT_NAME=x is rejected by the pre hook" "$status" 1 "$d" "x " "$(invalid_message x)"
+expect_result "CARGO_GENERATE_VALUE_PROJECT_NAME=x is rejected by the pre hook" "$status" 1 "$d" "x " \
+  "$(invalid_message x); remove the directory 'x' that was created for it"
+
+# With --init nothing is created, so there is nothing to remove.
+status=0; CARGO_GENERATE_VALUE_PROJECT_NAME=x generate "$cg" "$d" --init || status=$?
+expect_result "with --init, x is rejected without a directory to remove" "$status" 1 "$d" "" "$(invalid_message x)"
+if grep -qF "remove the directory" "$d.log"; then fail "with --init, the message asks to remove a directory"; fi
 
 rm -rf "$d"; mkdir -p "$d"
 status=0

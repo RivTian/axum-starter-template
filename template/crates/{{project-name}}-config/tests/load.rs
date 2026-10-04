@@ -11,7 +11,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use svc_config::load::{Inputs, Loaded, load};
 use svc_config::source::Source;
-use svc_config::table::{overrides, render, rows};
+use svc_config::table::{file, overrides, render, rows};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -156,6 +156,17 @@ fn prefixed_variables_without_a_double_underscore_are_not_configuration() {
 }
 
 #[test]
+fn a_variable_that_spells_a_key_with_one_underscore_names_the_one_meant() {
+    let vars = env(&[("APP_SERVER_LIMIT", "10"), ("app_log_filter", "debug")]);
+    assert_eq!(
+        load_with(None, &vars, &[]).err(),
+        Some(vec![
+            "invalid configuration: server.limit (env APP_SERVER_LIMIT): not read, since `__` separates the parts of a key; did you mean APP_SERVER__LIMIT?".to_string(),
+        ])
+    );
+}
+
+#[test]
 fn an_empty_alias_counts_as_unset_and_a_section_is_not_a_key() {
     let loaded = load_with(None, &env(&[("RUST_LOG", "")]), &[]);
     assert_eq!(
@@ -248,10 +259,30 @@ fn the_table_counts_characters_and_escapes_control_characters() -> TestResult {
         )
     );
     assert_eq!(
-        overrides(&rows(&loaded)),
+        overrides(&loaded),
         "log.filter=\"wärn\\nfake  row\" (cli --log-filter)"
     );
     assert_eq!(rows(&loaded)[1].source, Source::Default);
+    assert_eq!(file(&loaded), "none");
+    Ok(())
+}
+
+#[test]
+fn overrides_list_only_values_that_differ_from_the_defaults() -> TestResult {
+    let file_text = "[server]\naddr = \"127.0.0.1:8080\"\nlimit = 10\n[log]\nfilter = \"info\"\n";
+    let config = TempFile::new("same.toml", file_text)?;
+    let cli = [("server.timeout", "--timeout", "15s".to_string())];
+    let loaded = load_with(Some(&config.0), &[], &cli).map_err(|p| p.join("\n"))?;
+    let shown = config.0.display().to_string();
+    assert_eq!(
+        overrides(&loaded),
+        format!("server.limit=10 (file {shown})")
+    );
+    assert_eq!(file(&loaded), shown);
+    let empty = TempFile::new("empty.toml", "")?;
+    let loaded = load_with(Some(&empty.0), &[], &[]).map_err(|p| p.join("\n"))?;
+    assert_eq!(overrides(&loaded), "none");
+    assert_eq!(file(&loaded), empty.0.display().to_string());
     Ok(())
 }
 

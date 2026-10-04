@@ -1,7 +1,6 @@
 //! How each error is answered: one row of the mapping table per class, by whether a
 //! dependency caused it, and what the status code decides.
 
-use axum::http::StatusCode;
 use svc_api::problem::outcome;
 use svc_util::prelude::*;
 use tracing::Level;
@@ -40,9 +39,15 @@ fn the_class_gives_the_status_and_a_dependency_turns_client_errors_into_server_e
 }
 
 #[test]
-fn an_http_status_error_answers_with_its_own_code() {
-    let error = Error::new_down(ErrorType::HTTPStatus(405));
-    assert_eq!(outcome(&error).status, StatusCode::METHOD_NOT_ALLOWED);
+fn an_http_status_error_answers_with_its_own_code_when_it_is_a_failure() {
+    let code = |code| {
+        outcome(&Error::new_down(ErrorType::HTTPStatus(code)))
+            .status
+            .as_u16()
+    };
+    assert_eq!([code(405), code(400), code(599)], [405, 400, 599]);
+    // A problem with a success or a redirect status would be a contradiction.
+    assert_eq!([code(200), code(302), code(399), code(600)], [500; 4]);
 }
 
 #[test]

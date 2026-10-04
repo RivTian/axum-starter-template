@@ -108,6 +108,7 @@ impl Supervisor {
     /// Runs every service until a signal or a fault ends the run, and says how it ended.
     /// Services still running at the end are aborted.
     pub async fn run(mut self, signals: impl SignalSource) -> Outcome {
+        let started = tokio::time::Instant::now();
         let (events, mut inputs) = mpsc::unbounded_channel();
         let (stop_frontline, frontline) = watch::channel(false);
         let (stop_background, background) = watch::channel(false);
@@ -158,6 +159,17 @@ impl Supervisor {
             }
             for effect in state.step(input) {
                 match effect {
+                    Effect::Phase(Phase::Running, reason) => {
+                        self.phases.set(Phase::Running);
+                        // Seconds from the start of the run until every service was ready.
+                        let startup = started.elapsed().as_secs_f64();
+                        tracing::info!(
+                            phase = "running",
+                            reason,
+                            startup.duration = startup,
+                            "phase changed"
+                        );
+                    }
                     Effect::Phase(phase, reason) => {
                         self.phases.set(phase);
                         tracing::info!(phase = phase.as_str(), reason, "phase changed");

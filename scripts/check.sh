@@ -131,11 +131,11 @@ image_build() {
 
 image_serves() {
   # Healthy, ready, the commit as git SHA, the license texts in /usr/share/doc, and exit code
-  # 0 after SIGTERM; the container and the image are removed afterwards.
-  local name="$1" image="$2" container="$2-run" port sha notices status=0
-  sha="$(git rev-parse HEAD)" || return 1
-  docker run -d --name "$container" -p 127.0.0.1::8080 "$image:latest" >/dev/null || return 1
-  {
+  # 0 after SIGTERM; the container and the image are removed afterwards, whatever failed.
+  local name="$1" image="$2" container="$2-run" port sha notices="" status=0
+  sha="$(git rev-parse HEAD)" \
+    && docker run -d --name "$container" -p 127.0.0.1::8080 "$image:latest" >/dev/null \
+    && {
     port="$(docker port "$container" 8080 | sed -n '1s/.*://p')"
     for _ in $(seq 60); do
       [ "$(docker inspect -f '{{.State.Health.Status}}' "$container")" = healthy ] && break
@@ -144,7 +144,7 @@ image_serves() {
     [ "$(docker inspect -f '{{.State.Health.Status}}' "$container")" = healthy ] || { docker logs "$container" 2>&1 | tail -n 10; false; }
   } && curl -fsS "http://127.0.0.1:$port/readyz" >/dev/null \
     && { docker logs "$container" 2>&1 | grep -F "\"git_sha\":\"$sha\"" >/dev/null || { echo "no git_sha $sha in the log"; false; }; } \
-    && notices="$(mktemp -d)" \
+    && notices="$(dirname "$PWD")/notices" && mkdir "$notices" \
     && docker cp "$container:/usr/share/doc/$name/." "$notices/" \
     && cmp "$notices/THIRD_PARTY_NOTICES.md" THIRD_PARTY_NOTICES.md \
     && { if [ -f LICENSE ]; then cmp "$notices/LICENSE" LICENSE; else [ ! -e "$notices/LICENSE" ]; fi; } \
@@ -152,6 +152,7 @@ image_serves() {
     && [ "$(docker inspect -f '{{.State.ExitCode}}' "$container")" = 0 ] || status=1
   docker rm -f "$container" >/dev/null 2>&1
   docker image rm "$image:latest" >/dev/null 2>&1
+  if [ -n "$notices" ]; then rm -rf "$notices"; fi
   return "$status"
 }
 
@@ -179,7 +180,9 @@ full() {
   step archive_holds "$name"
   # With CARGO_TARGET_DIR set, the recipe must still find the binary.
   step env CARGO_TARGET_DIR="$PWD/target/elsewhere" just package
-  nolock="$(mktemp -d)"
+  # Inside the work directory, so that the cleanup on exit removes it too.
+  nolock="$(dirname "$dir")/nolock"
+  mkdir "$nolock"
   /bin/cp -R "$dir" "$nolock/"
   (
     cd "$nolock/$name" || exit 1
@@ -194,6 +197,20 @@ full() {
   fi
   return "$failed"
 }
+
+cleanup() {
+  # On every exit, also after Ctrl-C: the copy being checked and this check's own container
+  # and images, if a step left them; nothing else.
+  if [ -n "${work:-}" ]; then rm -rf "$work"; fi
+  if [ -n "${name:-}" ] && command -v docker >/dev/null; then
+    docker rm -f "rs-starter-template-check-$name-run" >/dev/null 2>&1 || true
+    docker image rm "rs-starter-template-check-$name:latest" "rs-starter-template-check-$name:nolock" \
+      >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 status=0
 for id in "$@"; do

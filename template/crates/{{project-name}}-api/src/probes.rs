@@ -1,5 +1,6 @@
 //! The probes: `/livez` answers whether the process can take requests at all, `/readyz`
-//! whether it should get traffic now. Neither is a problem document or an error log.
+//! whether it should get traffic now. Neither is a problem document or an error log, and
+//! the access log writes them at debug level: orchestrators call them every few seconds.
 
 use axum::Json;
 use axum::extract::State;
@@ -8,6 +9,11 @@ use serde_json::{Map, Value, json};
 use svc_runtime::prelude::*;
 
 use crate::state::AppState;
+
+/// The path of the liveness probe.
+pub(crate) const LIVEZ: &str = "/livez";
+/// The path of the readiness probe.
+pub(crate) const READYZ: &str = "/readyz";
 
 /// `/livez`: 200 whenever a connection is accepted.
 pub(crate) async fn livez() -> Json<Value> {

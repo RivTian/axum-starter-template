@@ -2,6 +2,7 @@
 //! and nothing filtering them all, so a strict filter on one output never starves another.
 
 use std::fmt;
+use std::path::PathBuf;
 
 use svc_util::prelude::*;
 use tracing::Subscriber;
@@ -17,7 +18,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
 use crate::error::{LOG_ALREADY_INITIALIZED, LOG_CONFIG_INVALID};
-use crate::rolling::RollingGzipWriter;
+use crate::rolling::{self, Failures, RollingGzipWriter};
 use crate::settings::{LogColor, LogFormat, LogSettings};
 
 type BoxedLayer = Box<dyn Layer<Registry> + Send + Sync>;
@@ -35,12 +36,26 @@ pub struct Environment {
     pub service_name: &'static str,
 }
 
-/// Keeps the log writer threads running. Dropping it flushes what they still hold.
+/// Keeps the log writer threads running. Dropping it flushes what they still hold, then
+/// says on stderr how many writes to the log file failed, if any did.
 #[must_use = "dropping the guard stops the log writer threads"]
 #[derive(Debug)]
 pub struct Guard {
     _stdout: WorkerGuard,
-    _file: Option<WorkerGuard>,
+    file: Option<(WorkerGuard, Failures, PathBuf)>,
+}
+
+impl Drop for Guard {
+    fn drop(&mut self) {
+        if let Some((guard, failures, path)) = self.file.take() {
+            drop(guard);
+            let count = failures.count();
+            if count > 0 {
+                let file = path.display();
+                rolling::warn(&format!("{count} writes to the log file {file} failed"));
+            }
+        }
+    }
 }
 
 /// Installs the global subscriber, and the bridge that turns `log` records into events.
@@ -68,8 +83,12 @@ pub fn init(settings: &LogSettings, env: &Environment) -> Result<Guard> {
     let (file, file_guard) = if settings.file.enabled {
         let file = &settings.file;
         let rolling = RollingGzipWriter::open(&file.dir, env.service_name, file.max_archives)?;
+        let (failures, path) = (rolling.failure_count(), rolling.path().to_path_buf());
         let (file, guard) = writer().finish(rolling);
-        (Some(BoxMakeWriter::new(file)), Some(guard))
+        (
+            Some(BoxMakeWriter::new(file)),
+            Some((guard, failures, path)),
+        )
     } else {
         (None, None)
     };
@@ -82,7 +101,7 @@ pub fn init(settings: &LogSettings, env: &Environment) -> Result<Guard> {
     )?;
     Ok(Guard {
         _stdout: stdout_guard,
-        _file: file_guard,
+        file: file_guard,
     })
 }
 
@@ -104,28 +123,36 @@ fn layers(
     stdout: BoxMakeWriter,
     file: Option<BoxMakeWriter>,
 ) -> Vec<BoxedLayer> {
-    let json = match settings.format {
-        LogFormat::Auto => !env.stdout_is_terminal,
-        LogFormat::Text => false,
-        LogFormat::Json => true,
+    let format = match settings.format {
+        LogFormat::Auto if env.stdout_is_terminal => LogFormat::Text,
+        LogFormat::Auto => LogFormat::Json,
+        chosen => chosen,
     };
     let color = match settings.color {
         LogColor::Always => true,
         LogColor::Never => false,
         LogColor::Auto => env.stdout_is_terminal && !env.no_color && !env.dumb_terminal,
     };
-    let stdout_layer = if json {
-        let layer = tracing_subscriber::fmt::layer().json();
-        layer
-            .with_current_span(true)
-            .with_span_list(true)
-            .with_writer(stdout)
-            .boxed()
-    } else {
-        tracing_subscriber::fmt::layer()
+    let stdout_layer = match format {
+        LogFormat::Json => {
+            let layer = tracing_subscriber::fmt::layer().json();
+            layer
+                // Every open span once, outermost first, in `spans`; `span` would repeat the
+                // innermost one.
+                .with_current_span(false)
+                .with_span_list(true)
+                .with_writer(stdout)
+                .boxed()
+        }
+        LogFormat::Pretty => tracing_subscriber::fmt::layer()
+            .pretty()
             .with_ansi(color)
             .with_writer(stdout)
-            .boxed()
+            .boxed(),
+        LogFormat::Auto | LogFormat::Text => tracing_subscriber::fmt::layer()
+            .with_ansi(color)
+            .with_writer(stdout)
+            .boxed(),
     };
     let mut layers = vec![stdout_layer.with_filter(filter(&settings.filter)).boxed()];
     if let Some(writer) = file {

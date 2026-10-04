@@ -1,5 +1,5 @@
-//! What the outputs write: JSON and text lines, a filter per output, a log file that never
-//! repeats a field nor carries color codes, and a second `init` that touches nothing.
+//! What the outputs write: JSON, text and pretty lines, a filter per output, a log file that
+//! never repeats a field nor carries color codes, and a second `init` that touches nothing.
 
 use std::error::Error;
 use std::io::{self, Write};
@@ -52,13 +52,15 @@ const ENV: Environment = Environment {
 };
 
 #[test]
-fn json_lines_carry_level_target_fields_and_the_span() -> TestResult {
+fn json_lines_carry_level_target_fields_and_every_span_once() -> TestResult {
     let stdout = Output::default();
     let settings = LogSettings::default();
     let subscriber = build(&settings, &ENV, stdout.writer(), None);
     tracing::subscriber::with_default(subscriber, || {
         let span = tracing::error_span!("request", request_id = "r-1");
         let _entered = span.enter();
+        let inner = tracing::error_span!("handler");
+        let _inner = inner.enter();
         tracing::info!(http.response.status_code = 200, "request finished");
     });
     let line: Value = serde_json::from_str(stdout.text().trim())?;
@@ -66,9 +68,33 @@ fn json_lines_carry_level_target_fields_and_the_span() -> TestResult {
     assert_eq!(line["target"], "output");
     assert_eq!(line["fields"]["message"], "request finished");
     assert_eq!(line["fields"]["http.response.status_code"], 200);
-    assert_eq!(line["span"]["request_id"], "r-1");
+    assert_eq!(line["spans"][0]["request_id"], "r-1");
+    assert_eq!(line["spans"][1]["name"], "handler");
+    assert!(line.get("span").is_none(), "{line}");
     assert!(line["timestamp"].as_str().is_some_and(|t| t.ends_with('Z')));
     Ok(())
+}
+
+#[test]
+fn pretty_text_spreads_an_event_over_lines_but_the_file_keeps_one() {
+    let (stdout, file) = (Output::default(), Output::default());
+    let settings = LogSettings {
+        format: LogFormat::Pretty,
+        ..LogSettings::default()
+    };
+    let subscriber = build(&settings, &ENV, stdout.writer(), Some(file.writer()));
+    tracing::subscriber::with_default(subscriber, || {
+        let span = tracing::error_span!("request", request_id = "r-1");
+        let _entered = span.enter();
+        tracing::info!(http.response.status_code = 200, "request finished");
+    });
+    let stdout = stdout.text();
+    assert!(stdout.lines().count() > 1, "{stdout}");
+    assert!(stdout.contains("request finished"), "{stdout}");
+    assert!(stdout.contains("output.rs:"), "{stdout}");
+    assert!(stdout.contains("request_id"), "{stdout}");
+    assert!(!stdout.contains('\u{1b}'), "{stdout:?}");
+    assert_eq!(file.text().lines().count(), 1, "{}", file.text());
 }
 
 #[test]

@@ -2,7 +2,7 @@
 
 use std::error::Error as StdError;
 
-use super::{BError, Error, ErrorSource};
+use super::{BError, Error, ErrorSource, ImmutStr};
 
 /// The cause chain of an error, starting with the error itself; see [`Error::chain`].
 ///
@@ -47,7 +47,8 @@ pub struct Fields {
     pub source: &'static str,
     /// `error.retry`: whether retrying may help.
     pub retry: bool,
-    /// `error.context`: the context, empty when there is none.
+    /// `error.context`: the contexts along the chain, outermost first and joined by `: `,
+    /// such as `while loading: store is gone`; empty when there is none.
     pub context: String,
     /// `error.chain`: the type names along the cause chain, comma separated; foreign errors
     /// appear as `external`.
@@ -74,23 +75,22 @@ impl Error {
             ErrorSource::Internal => "internal",
             ErrorSource::Unset => "unset",
         };
-        let chain: Vec<&str> = self
-            .chain()
-            .map(|hop| {
-                hop.downcast_ref::<Error>()
-                    .map_or("external", |typed| typed.etype.as_str())
-            })
+        let typed = || self.chain().map(|hop| hop.downcast_ref::<Error>());
+        let chain: Vec<&str> = typed()
+            .map(|hop| hop.map_or("external", |typed| typed.etype.as_str()))
+            .collect();
+        // Wrapping an error, with `because` or `more_context`, keeps the inner context in the
+        // cause; every one of them says something the others do not.
+        let contexts: Vec<&str> = typed()
+            .filter_map(|hop| hop?.context.as_ref().map(ImmutStr::as_str))
+            .filter(|context| !context.is_empty())
             .collect();
         Fields {
             etype: self.etype.as_str(),
             class: self.etype.class().as_str(),
             source,
             retry: self.retry(),
-            context: self
-                .context
-                .as_ref()
-                .map(|context| context.as_str().to_string())
-                .unwrap_or_default(),
+            context: contexts.join(": "),
             chain: chain.join(","),
             cause: self
                 .chain()
@@ -164,7 +164,7 @@ mod tests {
             (fields.etype, fields.class, fields.source, fields.retry),
             ("TodoMissing", "NotFound", "unset", true)
         );
-        assert_eq!(fields.context, "while loading");
+        assert_eq!(fields.context, "while loading: store is gone");
         assert_eq!(fields.chain, "TodoMissing,StoreBroken");
         assert_eq!(fields.cause, "");
         let foreign = Error::because(
@@ -173,5 +173,15 @@ mod tests {
             std::io::Error::other("disk full"),
         );
         assert_eq!(foreign.fields().cause, "disk full");
+    }
+
+    #[test]
+    fn more_context_keeps_the_context_it_wraps() {
+        let error = Error::explain(STORE_BROKEN, "store is gone").more_context("while loading");
+        let fields = error.fields();
+        assert_eq!(fields.context, "while loading: store is gone");
+        assert_eq!(fields.chain, "StoreBroken,StoreBroken");
+        let plain = Error::new(STORE_BROKEN).fields();
+        assert_eq!(plain.context, "");
     }
 }

@@ -4,7 +4,11 @@ import "hooks/name_rules" as rules;
 
 let name = variable::get("project-name");
 if !rules::is_valid(name) {
-    abort(rules::message(name));
+    // By now cargo-generate has created the project's directory, unless it generates into
+    // the current one (--init).
+    let init = variable::is_set("is_init") && variable::get("is_init");
+    let hint = if init { "" } else { `; remove the directory '${name}' that was created for it` };
+    abort(`${rules::message(name)}${hint}`);
 }
 
 if !variable::is_set("year") {

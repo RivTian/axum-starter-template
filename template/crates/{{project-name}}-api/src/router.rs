@@ -14,8 +14,8 @@ use crate::{middleware, probes, todo};
 pub fn router(state: AppState, settings: &ServerSettings) -> Router {
     let problem_state = (state.clone(), settings.request_timeout);
     let routes = Router::new()
-        .route("/livez", get(probes::livez))
-        .route("/readyz", get(probes::readyz))
+        .route(probes::LIVEZ, get(probes::livez))
+        .route(probes::READYZ, get(probes::readyz))
         .route("/v1/todos", get(todo::list).post(todo::create))
         .route("/v1/todos/{id}", get(todo::get).delete(todo::delete))
         .route("/v1/todos/{id}/complete", post(todo::complete))

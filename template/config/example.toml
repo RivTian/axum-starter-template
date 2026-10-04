@@ -36,7 +36,8 @@ drain_timeout = "20s"
 capacity = 1024
 
 [log]
-# auto (text on a terminal, JSON otherwise), text or json.
+# auto (text on a terminal, JSON otherwise), text, json, or pretty: several lines per
+# event with the source location, for reading during development.
 format = "auto"
 # Which events go to stdout, in EnvFilter syntax, such as "info,svc_api::access=warn".
 filter = "info"

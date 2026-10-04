@@ -178,6 +178,21 @@ async fn the_outcome_does_not_depend_on_scheduling() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn running_is_logged_with_how_long_the_startup_took() {
+    let (logs, _guard) = svc_test_utils::logs::CapturedLogs::start();
+    let slow = http(vec![Step::Sleep(secs(2)), Step::Ready, Step::UntilShutdown]);
+    let outcome = run(vec![slow, log(serving())], &[(5, Signal::Interrupt)]).await;
+    assert_eq!(outcome, "stopped");
+    let running: Vec<_> = (logs.with_message("phase changed").into_iter())
+        .filter(|event| event.get("phase").and_then(|p| p.as_str()) == Some("running"))
+        .collect();
+    assert_eq!(running.len(), 1);
+    // Seconds, on the paused clock: the slower service was ready after exactly 2.
+    let startup = running[0].get("startup.duration").map(ToString::to_string);
+    assert_eq!(startup.as_deref(), Some("2.0"));
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_drain_timeout_is_logged_once() {
     let (logs, _guard) = svc_test_utils::logs::CapturedLogs::start();
     let stuck = http(vec![Step::Ready, Step::Sleep(secs(3600))]);

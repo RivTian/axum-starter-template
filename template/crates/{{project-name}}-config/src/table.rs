@@ -25,17 +25,10 @@ pub struct Row {
 #[must_use]
 pub fn rows<T: Serialize>(loaded: &Loaded<T>) -> Vec<Row> {
     let values = Value::try_from(&loaded.config).ok();
-    let value_of = |key: &str| {
-        let mut parts = key.split('.');
-        let first = values.as_ref()?.get(parts.next()?)?;
-        parts
-            .try_fold(first, |value, part| value.get(part))
-            .map(shown)
-    };
     (loaded.sources.iter())
         .map(|(key, source)| Row {
             key: printable(key),
-            value: value_of(key).unwrap_or_default(),
+            value: shown_at(values.as_ref(), key),
             source: source.clone(),
         })
         .collect()
@@ -58,19 +51,43 @@ pub fn render(rows: &[Row]) -> String {
     out
 }
 
-/// The keys that do not have their default value, as `key=value (source)` joined by `, `, or
-/// `none`.
+/// The keys whose effective value differs from their default, as `key=value (source)` joined
+/// by `, `, or `none`. A file that repeats a default changes nothing and is not listed.
 #[must_use]
-pub fn overrides(rows: &[Row]) -> String {
-    let changed: Vec<String> = (rows.iter())
-        .filter(|row| row.source != Source::Default)
-        .map(|row| format!("{}={} ({})", row.key, row.value, row.source))
+pub fn overrides<T: Serialize + Default>(loaded: &Loaded<T>) -> String {
+    let (values, defaults) = (
+        Value::try_from(&loaded.config).ok(),
+        Value::try_from(T::default()).ok(),
+    );
+    let changed: Vec<String> = (loaded.sources.iter())
+        .filter_map(|(key, source)| {
+            let value = shown_at(values.as_ref(), key);
+            (value != shown_at(defaults.as_ref(), key))
+                .then(|| format!("{}={value} ({source})", printable(key)))
+        })
         .collect();
     if changed.is_empty() {
         "none".to_string()
     } else {
         changed.join(", ")
     }
+}
+
+/// The configuration file that was read, as shown on one line, or `none`.
+#[must_use]
+pub fn file<T>(loaded: &Loaded<T>) -> String {
+    (loaded.file.as_deref()).map_or_else(
+        || "none".to_string(),
+        |path| printable(&path.display().to_string()),
+    )
+}
+
+/// The value at a dotted key, as shown; empty when there is none.
+fn shown_at(values: Option<&Value>, key: &str) -> String {
+    let mut parts = key.split('.');
+    let first = parts.next().and_then(|part| values?.get(part));
+    let value = first.and_then(|first| parts.try_fold(first, |value, part| value.get(part)));
+    value.map(shown).unwrap_or_default()
 }
 
 fn shown(value: &Value) -> String {

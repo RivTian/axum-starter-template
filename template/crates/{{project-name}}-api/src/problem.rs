@@ -77,9 +77,12 @@ pub(crate) async fn render(
     };
     let error = match response.extensions_mut().remove::<Pending>() {
         Some(Pending(error)) => error,
-        None if needs_problem(&response) => Arc::from(Error::new_down(ErrorType::HTTPStatus(
-            response.status().as_u16(),
-        ))),
+        None if needs_problem(&response) => {
+            let (parts, body) = response.into_parts();
+            let error = framework_error(parts.status, body).await;
+            response = Response::from_parts(parts, Body::empty());
+            Arc::from(error)
+        }
         None => return response,
     };
     let outcome = outcome(&error);
@@ -106,11 +109,35 @@ pub(crate) async fn render(
     rendered
 }
 
-/// A failed response of the framework that has no body of its own yet.
+/// A failed response of the framework: without a body of its own yet, or the plain text of
+/// an extractor's rejection, such as axum's `Query` gives. JSON answers, such as `/readyz`
+/// gives, are left as they are.
 fn needs_problem(response: &Response) -> bool {
     let status = response.status();
-    (status.is_client_error() || status.is_server_error())
-        && !response.headers().contains_key(CONTENT_TYPE)
+    let plain = response
+        .headers()
+        .get(CONTENT_TYPE)
+        .is_none_or(|value| (value.to_str()).is_ok_and(|value| value.starts_with("text/plain")));
+    (status.is_client_error() || status.is_server_error()) && plain
+}
+
+/// The error behind a failed response of the framework; its text, such as why a query
+/// string did not parse, is the context. A 5xx is this service's own mistake.
+async fn framework_error(status: StatusCode, body: Body) -> BError {
+    let etype = ErrorType::HTTPStatus(status.as_u16());
+    // The framework's texts are short; a longer body is not one of them and is left out.
+    let text = (axum::body::to_bytes(body, 4096).await.ok())
+        .and_then(|bytes| String::from_utf8(bytes.to_vec()).ok())
+        .filter(|text| !text.trim().is_empty());
+    let error = match text {
+        Some(text) => Error::explain(etype, text),
+        None => Error::new(etype),
+    };
+    if status.is_server_error() {
+        error.into_in()
+    } else {
+        error.into_down()
+    }
 }
 
 /// A problem document. `type` is a URN for client errors of an error kind and `about:blank`
@@ -181,14 +208,4 @@ fn kebab(name: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::kebab;
-
-    #[test]
-    fn names_turn_into_kebab_case() {
-        assert_eq!(kebab("TodoNotFound"), "todo-not-found");
-        assert_eq!(kebab("RequestRejected"), "request-rejected");
-        assert_eq!(kebab("HTTPStatus"), "http-status");
-        assert_eq!(kebab("H2Error"), "h2-error");
-    }
-}
+mod tests;

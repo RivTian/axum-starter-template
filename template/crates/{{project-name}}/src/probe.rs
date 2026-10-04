@@ -4,14 +4,15 @@
 
 use std::io::{self, BufRead, BufReader, ErrorKind, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::cli::ProbeArgs;
 use crate::exit::{self, Exit};
 use crate::names::SERVICE_NAME;
 
-/// The limit for connecting, and for each read and write.
-const TIMEOUT: Duration = Duration::from_secs(5);
+/// The limit for the whole probe, every address included: below the 3 seconds the image's
+/// health check allows, so the probe reports why it failed before it is killed.
+const LIMIT: Duration = Duration::from_secs(2);
 
 /// Runs `probe`.
 pub(crate) fn run(args: &ProbeArgs) -> Exit {
@@ -40,24 +41,44 @@ fn get(url: &str) -> Result<u16, String> {
     let addrs = host_port
         .to_socket_addrs()
         .map_err(|_| "invalid URL".to_string())?;
+    let deadline = Instant::now() + LIMIT;
     let mut last = "the host has no address".to_string();
     for addr in addrs {
-        match TcpStream::connect_timeout(&addr, TIMEOUT) {
-            Ok(stream) => return exchange(stream, authority, path).map_err(|e| why(&e)),
+        let connected = left(deadline).and_then(|left| TcpStream::connect_timeout(&addr, left));
+        match connected {
+            Ok(stream) => {
+                return exchange(stream, authority, path, deadline).map_err(|e| why(&e));
+            }
             Err(error) => last = why(&error),
         }
     }
     Err(last)
 }
 
-fn exchange(mut stream: TcpStream, authority: &str, path: &str) -> io::Result<u16> {
-    stream.set_read_timeout(Some(TIMEOUT))?;
-    stream.set_write_timeout(Some(TIMEOUT))?;
+/// The time left before the deadline; none left is a timeout.
+fn left(deadline: Instant) -> io::Result<Duration> {
+    let left = deadline.saturating_duration_since(Instant::now());
+    if left.is_zero() {
+        Err(ErrorKind::TimedOut.into())
+    } else {
+        Ok(left)
+    }
+}
+
+fn exchange(
+    mut stream: TcpStream,
+    authority: &str,
+    path: &str,
+    deadline: Instant,
+) -> io::Result<u16> {
+    // Reads and writes end at the deadline, however long the earlier steps took.
+    stream.set_write_timeout(Some(left(deadline)?))?;
     let agent = format!("{SERVICE_NAME}-probe");
     write!(
         stream,
         "GET {path} HTTP/1.1\r\nhost: {authority}\r\nuser-agent: {agent}\r\nconnection: close\r\n\r\n"
     )?;
+    stream.set_read_timeout(Some(left(deadline)?))?;
     let mut status_line = String::new();
     BufReader::new(stream).read_line(&mut status_line)?;
     status_of(&status_line).ok_or_else(|| io::Error::other("invalid response"))

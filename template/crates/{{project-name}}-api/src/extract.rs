@@ -5,7 +5,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use axum::Json;
-use axum::extract::rejection::JsonRejection;
+use axum::extract::rejection::{JsonRejection, PathRejection};
 use axum::extract::{FromRequest, FromRequestParts, Path, Request};
 use axum::http::StatusCode;
 use axum::http::request::Parts;
@@ -41,7 +41,8 @@ fn json_rejection(rejection: &JsonRejection) -> ApiError {
 }
 
 /// The path's one parameter, parsed with `FromStr`; one that is not UTF-8 or does not parse
-/// gives 400 with the reason as the detail.
+/// gives 400 with the reason as the detail. On a route whose parameters do not fit, such as
+/// one with two, it is this service's mistake: 500.
 #[derive(Debug)]
 pub(crate) struct ApiPath<T>(pub(crate) T);
 
@@ -54,14 +55,22 @@ where
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        // The framework's own text names its internals; a fixed reason says what matters.
         let Path(text) = Path::<String>::from_request_parts(parts, state)
             .await
-            .map_err(|_| bad_path("invalid path parameter: not valid UTF-8 text".to_string()))?;
+            .map_err(|rejection| path_rejection(&rejection))?;
         text.parse()
             .map(ApiPath)
             .map_err(|error| bad_path(format!("invalid path parameter {text:?}: {error}")))
     }
+}
+
+fn path_rejection(rejection: &PathRejection) -> ApiError {
+    if rejection.status().is_server_error() {
+        let error = Error::explain(ErrorType::InternalError, rejection.body_text());
+        return ApiError(error.into_in());
+    }
+    // The framework's own text names its internals; a fixed reason says what matters.
+    bad_path("invalid path parameter: not valid UTF-8 text".to_string())
 }
 
 fn bad_path(reason: String) -> ApiError {

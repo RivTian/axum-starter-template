@@ -1,22 +1,25 @@
 //! The request span and the access log.
 
 use std::net::SocketAddr;
-use std::time::Instant;
 
 use axum::extract::{ConnectInfo, MatchedPath, Request};
 use axum::http::Version;
 use axum::http::header::USER_AGENT;
 use axum::middleware::Next;
 use axum::response::Response;
+use tokio::time::Instant;
 use tracing::field::Empty;
 use tracing::{Instrument, Level, Span};
 
+use svc_util::prelude::*;
+
 use super::RequestId;
+use crate::probes;
 
 /// Runs the request in a span named `request`, created at error level so that the span and
-/// its `request_id` stay on every log line of the request whatever the filter; when the
-/// request ends, also when the client goes away first, logs `request finished` with target
-/// `svc_api::access`.
+/// its `request_id` stay on every log line of the request under any filter that lets errors
+/// of `svc_api` through; when the request ends, also when the client goes away first, logs
+/// `request finished` with target `svc_api::access`, at debug level for the probes.
 pub(crate) async fn access_log(request: Request, next: Next) -> Response {
     let span = tracing::error_span!(
         "request",
@@ -29,9 +32,12 @@ pub(crate) async fn access_log(request: Request, next: Next) -> Response {
         user_agent.original = Empty,
         request_id = Empty,
     );
-    if let Some(route) = request.extensions().get::<MatchedPath>() {
+    let route = request.extensions().get::<MatchedPath>();
+    if let Some(route) = route {
         span.record("http.route", route.as_str());
     }
+    let probe =
+        route.is_some_and(|route| [probes::LIVEZ, probes::READYZ].contains(&route.as_str()));
     if let Some(ConnectInfo(client)) = request.extensions().get::<ConnectInfo<SocketAddr>>() {
         span.record("client.address", tracing::field::display(client.ip()));
         span.record("client.port", client.port());
@@ -47,6 +53,7 @@ pub(crate) async fn access_log(request: Request, next: Next) -> Response {
         span: span.clone(),
         started: Instant::now(),
         status: None,
+        level: if probe { Level::DEBUG } else { Level::INFO },
     };
     let response = next.run(request).instrument(span).await;
     finished.status = Some(response.status().as_u16());
@@ -59,24 +66,26 @@ struct Finished {
     span: Span,
     started: Instant,
     status: Option<u16>,
+    level: Level,
 }
 
 impl Drop for Finished {
     fn drop(&mut self) {
-        let duration = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        // In seconds, as the OpenTelemetry semantic conventions define the field.
+        let duration = self.started.elapsed().as_secs_f64();
         let _entered = self.span.enter();
         if let Some(status) = self.status {
-            tracing::event!(
+            log_at_level!(
                 target: "svc_api::access",
-                Level::INFO,
+                self.level,
                 http.response.status_code = status,
                 http.server.request.duration = duration,
                 "request finished"
             );
         } else {
-            tracing::event!(
+            log_at_level!(
                 target: "svc_api::access",
-                Level::INFO,
+                self.level,
                 http.server.request.duration = duration,
                 cancelled = true,
                 "request finished"

@@ -1,6 +1,8 @@
 # The service image: built with the latest stable Rust, run on distroless (no shell) as a
-# non-root user. The health check uses the binary's own probe. Build with `just docker-build`
-# so that the image knows the current commit.
+# non-root user. The health check uses the binary's own probe on /livez: whether the process
+# serves at all. /readyz would mark the container unhealthy while it drains or a dependency
+# is down, and an orchestrator would replace it for that. Build with `just docker-build` so
+# that the image knows the current commit.
 
 FROM rust:1-bookworm AS build
 WORKDIR /src
@@ -21,6 +23,6 @@ ENV {{project-name | shouty_snake_case}}_SERVER__HTTP_ADDR=0.0.0.0:8080
 EXPOSE 8080
 USER nonroot:nonroot
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
-  CMD ["/usr/local/bin/{{project-name}}", "probe", "http://127.0.0.1:8080/readyz"]
+  CMD ["/usr/local/bin/{{project-name}}", "probe", "http://127.0.0.1:8080/livez"]
 ENTRYPOINT ["/usr/local/bin/{{project-name}}"]
 CMD ["run"]

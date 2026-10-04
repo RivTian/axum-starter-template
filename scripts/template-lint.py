@@ -95,6 +95,21 @@ def liquid_problems(text):
                 yield f"unknown name {ident!r} in tag"
 
 
+def missing_dependency_names(cargo_toml, name_rules):
+    """Project names that would give a crate the name of a workspace dependency, such as
+    `tokio` itself or `http-body` (its `-util` crate would be `http-body-util`), and that the
+    hooks do not reject."""
+    section = re.search(r"^\[workspace\.dependencies\]\n(.*?)(?=^\[|\Z)", cargo_toml, re.M | re.S)
+    keys = re.findall(r"^([^\s=]+)\s*=", section.group(1) if section else "", re.M)
+    roles = [key[len("{{project-name}}"):] for key in keys if key.startswith("{{project-name}}")]
+    listed = re.search(r"fn dependency_names\(\)\s*\{\s*\[(.*?)\]", name_rules, re.S)
+    known = {name.replace("_", "-") for name in re.findall(r'"([^"]+)"', listed.group(1) if listed else "")}
+    needed = set()
+    for key in (key.replace("_", "-") for key in keys if "{{" not in key):
+        needed.update(key[:len(key) - len(role)] for role in roles if key.endswith(role) and key != role)
+    return sorted(needed - known)
+
+
 def lint(root, warnings=None):
     findings = []
 
@@ -178,6 +193,10 @@ def lint(root, warnings=None):
             report("hooks", "template/" + rel, "only the init hook may prompt")
     if 'file::delete("hooks")' not in hooks.get("hooks/pre.rhai", ""):
         report("hooks", "template/hooks/pre.rhai", "the pre hook must delete the hooks directory")
+    for name in missing_dependency_names(read_text(os.path.join(tdir, "Cargo.toml")) or "",
+                                         hooks.get("hooks/name_rules.rhai", "")):
+        report("hooks", "template/hooks/name_rules.rhai",
+               f"dependency_names() lacks {name!r}, which would clash with a workspace dependency")
 
     for p in files:
         if p.startswith(("generated/", "target/")) or "/target/" in p or p == "template/Cargo.lock":

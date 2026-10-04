@@ -42,9 +42,9 @@ fn is_well_formed(name) {
 fn dependency_names() {
     [
         "async-trait", "axum", "cargo-metadata", "cargo_metadata", "clap", "console-subscriber",
-        "flate2", "http-body", "http-body-util", "log", "serde", "serde-json", "serde_json",
-        "time", "tokio", "toml", "tower", "tower-http", "tracing", "tracing-appender",
-        "tracing-subscriber", "uuid", "vergen-gitcl",
+        "flate2", "http-body", "http-body-util", "log", "mimalloc", "serde", "serde-json",
+        "serde_json", "time", "tokio", "toml", "tower", "tower-http", "tracing",
+        "tracing-appender", "tracing-subscriber", "uuid", "vergen-gitcl",
     ]
 }
 

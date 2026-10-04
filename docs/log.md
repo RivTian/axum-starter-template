@@ -224,3 +224,59 @@
 - 用户把系统里的 cargo-generate 升到 0.25.0 后，`just ci` 仍报"两个版本相同"：`compare` 要用最老支持版本（0.24.0）和最新版本分别渲染，`CG_MIN` 与 `CG_LATEST` 默认都指向系统里的同一个版本。
 - 按用户的决定，改为只支持并只测试一个版本：`cargo_generate_version` 提到 `>=0.25.0`；删除 `compare`、`cg-versions` 与 `CG_MIN`/`CG_LATEST`；`names.sh` 用 `CG`（默认为系统里的 cargo-generate）；模板 CI 只安装 `CG_VERSION`（0.25.0），compare job 改为只跑 `just names`。这推翻了任务书沿用的 V5 D-14（`>=0.24.0` 并比对两个版本）。
 - 以后升级时，同时改 `template/cargo-generate.toml` 与 `template-ci.yml` 中的版本。
+
+## 补充 · pretty 日志与启动配置日志
+
+参考 V3 生成的 fusion_server 截图后，按用户的决定改两处：
+
+| 项                           | 改动                                                                                                                                                                                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `log.format = "pretty"`      | 可选值，默认仍是 `auto`（终端单行文本，否则 JSON）。用 `tracing_subscriber` 的 pretty 格式：每个事件多行，带源码位置，供开发时阅读；日志文件仍是单行。不新增配置键或依赖                                                            |
+| 启动日志 `configuration`     | 新增 `config.file`：实际读取的配置文件路径，没有就是 `none`（`Loaded` 新增 `file`，`table::file` 负责单行显示）。`overrides` 改为只列生效值与默认值不同的键并带来源；原先按来源过滤，`just run` 会列出 example.toml 的全部 15 个键 |
+
+**检查**
+
+| 命令或操作              | 结果                                                                                                                                         |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `just commit`           | 通过                                                                                                                                         |
+| 新测试                  | 文件里写成默认值的键不列入 `overrides`；空配置文件仍记在 `config.file`；pretty 输出多行、带 `output.rs:` 位置与 span 字段，文件输出仍为一行 |
+| 进程测试                | 改用非默认的 `--log-filter info,hyper=warn`（`info` 等于默认值，不会再出现），并断言 `config.file`                                         |
+| `just run` 冒烟         | `overrides` 只剩命令行给出的 `log.format` 与 `server.http_addr` 两项                                                                       |
+
+## 补充 · 访问日志耗时单位与 JSON 日志的 span
+
+| 项 | 改动 |
+| --- | --- |
+| `http.server.request.duration` | 原为毫秒整数，快请求都记成 `0`，且与 OpenTelemetry 语义约定（秒）不符。改为秒的浮点数；计时改用 `tokio::time::Instant`，暂停时钟下的测试可断言精确值 |
+| JSON 日志的 `span`/`spans` | 原先同时开启 `with_current_span` 与 `with_span_list`，同一个 span 在一行里写两遍。改为只保留 `spans`（全部打开的 span，由外到内），handler 自己再开 span 时 `request_id` 仍在 |
+
+**检查**：`just commit` 通过；客户端放弃的请求在暂停时钟下记为 `0.1` 秒；嵌套 span 的 JSON 行只有 `spans`，`request` 在前；实跑的一行访问日志为 `"http.server.request.duration":0.000224916`，只有 `spans`。
+
+## 补充 · 深度对比 V3/V4 后修复的缺陷与文档
+
+对 V3/V4 做了六个方向的只读深度对比（错误与 HTTP、配置与 CLI、日志、运行时与 domain、模板工程、V4 阶段 C 缺陷清单）；以下 7 项按用户的决定逐个修复，每项一个提交。
+
+| # | 问题 | 修复 | 验证 |
+| - | ---- | ---- | ---- |
+| 1 | 项目名 `mimalloc` 生成无法解析的 workspace（C-25 在 V6.1 再现：加依赖时没加进 hooks 的名单） | 名单加入 `mimalloc`；template-lint 从 `[workspace.dependencies]` 与 crate 后缀推导应拒绝的名字，与名单比对 | lint 在修复前恰好报出 `mimalloc`；`just names` 新增一项通过 |
+| 2 | 每次启动都把日志文件归档；保留按文件数计，崩溃循环一天 14 次会删光更早的日志 | 当天写过的文件续写，更早的才归档 | 新测试在旧实现上失败（3 次重启产生 3 个归档） |
+| 3 | `error.context` 只取最外层，`because`/`more_context` 包裹后内层 context 不进日志 | 沿链拼接各层 context（外层在前，`: ` 分隔）；problem 的 `detail` 仍只用最外层 | 单元测试覆盖 `because` 与 `more_context` |
+| 4 | problem 中间件只改写无 content-type 的失败响应；直接用 axum 的 `Query`/`Json`/`Path` 会得到纯文本，与契约不符 | `text/plain` 的失败响应也改写，文本作 context；`ApiPath` 遇到 axum 判 500 的拒绝（参数个数不符）按本服务错误处理；`HTTPStatus` 不在 400–599 时按 500 | `problem/tests.rs` 用独立路由验证三种情形；JSON 失败响应（如 `/readyz`）保持不变 |
+| 5 | 文档四处与实现不符 | 改正：监督器测试不再每场景 50 次；bin 的 `lib.rs` 含 `main`；closure 规则只对默认 feature 成立；`request_id` 只在放行 `svc_api` 错误的过滤下保留（含 `access.rs` 注释） | — |
+| 6 | `check.sh` 的 `image_serves` 在 `git rev-parse`/`docker run` 失败时跳过清理，留下检查镜像；notices 目录从不删除 | 清理不再被跳过；scratch 目录放进工作目录；`trap` 在退出（含 INT/TERM）时删除副本及本次检查自己的容器与镜像 | 用 `FROM scratch` 的检查镜像复现：旧实现留下镜像，新实现删除；SIGTERM 中断后工作目录已删除；用户镜像前后一致 |
+| 7 | probe 每步最多 5 秒，而镜像健康检查 3 秒就杀掉它；健康检查探 `/readyz`，排空或依赖故障时容器被判不健康 | probe 总时限 2 秒；健康检查改探 `/livez` | 新进程测试：对不应答的监听，probe 在 3 秒内以 `timed out` 失败（实测 2.006 秒）；`just full m2` 含镜像健康检查通过 |
+
+**推翻或修正的既有记录**：容器健康检查从 `/readyz` 改为 `/livez`（V3 设计稿的主张，V4/V6 曾用 `/readyz`）。
+
+## 补充 · 从 V3/V4 吸收的六项能力
+
+用户认可了深度对比"三、值得吸收的能力"中的六项，逐项实现，每项一个提交。都没有新增配置键或依赖。
+
+| 项 | 实现 | 测试 |
+| -- | ---- | ---- |
+| 前缀变量拼错时给提示 | 不含 `__` 的前缀变量仍然忽略（Kubernetes 会加），但若把 `_` 与 `__` 视为相同后正好拼出一个键（如 `APP_SERVER_HTTP_ADDR`），报错并给出应写的变量名；含 `__` 的未知键同样给提示（如 `APP_LOG__FILE_ENABLED`） | 配置单元测试；进程测试覆盖两种写法 |
+| 探针请求不写 INFO 访问日志 | `/livez`、`/readyz` 的 `request finished` 记为 DEBUG（同一 target）；`log_at_level!` 增加 `target:` 形式；探针路径改为 `probes.rs` 中的常量，路由与访问日志共用 | 契约测试：两个探针为 DEBUG，其他请求为 INFO |
+| 日志写入器 | 文件写入经 `BufWriter`（写线程每批之后 flush，已核对 tracing-appender 0.2.5 的 worker）；每秒至多检查一次文件是否还在，文件或目录被删后重建；轮转时文件已不在则直接新建；失败计数改为共享，由 `Guard` 在退出时报告；启动时删除上次留下的 `.gz.tmp`。`rolling.rs` 的归档部分移到 `rolling/archive.rs` | 目录被删后 1 秒内重建；目录变成文件时计数失败；孤立的 `.gz.tmp` 被删除、未完成的归档重新压缩 |
+| `running` 带启动耗时 | `phase changed` 进入 `running` 时带 `startup.duration`（秒） | 暂停时钟下，较慢的服务 2 秒后就绪，记为 `2.0` |
+| pre hook 提示删除残留目录 | 拒绝名字时追加"remove the directory 'x' that was created for it"；`--init` 不创建目录，不提示 | `just names`：两条路径各一项 |
+| 模板 CI 的 lint job | 去掉 Rust 1.88 与 stable 的安装：`just lint` 只用 Python 与 shell | actionlint |

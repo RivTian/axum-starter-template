@@ -18,13 +18,14 @@ pub struct Outcome {
     pub retry_after: bool,
 }
 
-/// The outcome of an error. `HTTPStatus` errors answer with their own code; every other error
-/// with the code of its class, where a client error caused by a dependency is this service's
-/// failure.
+/// The outcome of an error. `HTTPStatus` errors answer with their own code when it is a
+/// failure (400 to 599) and with 500 otherwise; every other error with the code of its
+/// class, where a client error caused by a dependency is this service's failure.
 #[must_use]
 pub fn outcome(error: &Error) -> Outcome {
     let code = match error.etype() {
-        ErrorType::HTTPStatus(code) => *code,
+        ErrorType::HTTPStatus(code @ 400..=599) => *code,
+        ErrorType::HTTPStatus(_) => 500,
         etype => status_of(etype.class(), error.esource()),
     };
     let status = StatusCode::from_u16(code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);

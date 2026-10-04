@@ -3,8 +3,9 @@
 
 mod support;
 
+use std::net::TcpListener;
 use std::process::Stdio;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use support::{
     Running, Scratch, TestResult, WAIT, command, config, env_prefix, finish, request, service_name,
@@ -87,6 +88,26 @@ fn check_config_prints_every_key_with_its_source() -> TestResult {
 }
 
 #[test]
+fn a_mistyped_variable_names_the_one_meant() -> TestResult {
+    let prefix = env_prefix();
+    let mut command = command(&["check-config"]);
+    command
+        .env(format!("{prefix}_SERVER_HTTP_ADDR"), "0.0.0.0:8080")
+        .env(format!("{prefix}_LOG__FILE_ENABLED"), "true");
+    let done = finish(command)?;
+    assert_eq!(done.code, Some(78), "{}", done.stderr);
+    for meant in ["SERVER__HTTP_ADDR", "LOG__FILE__ENABLED"] {
+        assert!(
+            done.stderr
+                .contains(&format!("did you mean {prefix}_{meant}?")),
+            "{meant}: {}",
+            done.stderr
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn an_empty_filter_is_an_error_and_an_empty_rust_log_is_unset() -> TestResult {
     let mut empty = command(&["check-config"]);
     empty.env(format!("{}_LOG__FILTER", env_prefix()), "");
@@ -140,16 +161,21 @@ fn the_command_line_version_help_and_usage_errors() -> TestResult {
 fn a_run_serves_drains_on_sigterm_and_stops_cleanly() -> TestResult {
     let scratch = Scratch::new("run")?;
     let file = config(&scratch, "1s", "5s", "")?;
-    let mut service = Running::start(&file, &["--log-filter", "info"], &[])?;
+    let filter = "info,hyper=warn";
+    let mut service = Running::start(&file, &["--log-filter", filter], &[])?;
     let addr = service.running()?;
     let starting = service.wait_for("starting")?;
     assert!(starting["fields"]["git_sha"].is_string());
-    let overrides = service.wait_for("configuration")?;
-    let shown = overrides["fields"]["overrides"]
-        .as_str()
-        .unwrap_or_default();
+    let configuration = service.wait_for("configuration")?;
+    let fields = &configuration["fields"];
+    assert_eq!(fields["config.file"].as_str(), file.to_str());
+    let shown = fields["overrides"].as_str().unwrap_or_default();
     assert!(
-        shown.contains("log.filter=info (cli --log-filter)"),
+        shown.contains(&format!("log.filter={filter} (cli --log-filter)")),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("server.http_addr=127.0.0.1:0 (file "),
         "{shown}"
     );
     assert_eq!(request(addr, "GET", "/readyz", None)?.0, 200);
@@ -249,6 +275,25 @@ fn probe_tries_every_address_and_says_why_it_failed() -> TestResult {
         "{}",
         down.stderr
     );
+    Ok(())
+}
+
+#[test]
+fn a_probe_that_gets_no_answer_gives_up_before_the_health_check_does() -> TestResult {
+    // The kernel accepts the connection; nothing ever answers.
+    let silent = TcpListener::bind("127.0.0.1:0")?;
+    let url = format!("http://{}/livez", silent.local_addr()?);
+    let start = Instant::now();
+    let done = finish(command(&["probe", &url]))?;
+    let took = start.elapsed();
+    assert_eq!(done.code, Some(1));
+    assert!(
+        done.stderr.trim_end().ends_with("timed out"),
+        "{}",
+        done.stderr
+    );
+    // The image's health check kills the probe after 3 seconds.
+    assert!(took < Duration::from_secs(3), "{took:?}");
     Ok(())
 }
 

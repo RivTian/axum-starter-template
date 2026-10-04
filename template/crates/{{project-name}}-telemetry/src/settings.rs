@@ -10,7 +10,7 @@ use tracing_subscriber::EnvFilter;
 /// `[log]`: logging.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LogSettings {
-    /// `log.format`: `auto` (text on a terminal, JSON otherwise), `text` or `json`.
+    /// `log.format`: `auto` (text on a terminal, JSON otherwise), `text`, `pretty` or `json`.
     #[serde(deserialize_with = "format")]
     pub format: LogFormat,
     /// `log.filter`: which events go to stdout, in `EnvFilter` syntax; not empty.
@@ -69,8 +69,11 @@ impl Default for FileSettings {
 pub enum LogFormat {
     /// Text on a terminal, JSON otherwise.
     Auto,
-    /// Human-readable text.
+    /// Human-readable text, one line per event.
     Text,
+    /// Human-readable text over several lines per event, with the source location; for
+    /// reading on a terminal during development.
+    Pretty,
     /// One JSON object per line.
     Json,
 }
@@ -91,6 +94,7 @@ fn format<'de, D: Deserializer<'de>>(deserializer: D) -> Result<LogFormat, D::Er
     const CHOICES: &[(&str, LogFormat)] = &[
         ("auto", LogFormat::Auto),
         ("text", LogFormat::Text),
+        ("pretty", LogFormat::Pretty),
         ("json", LogFormat::Json),
     ];
     svc_util::de::one_of(deserializer, CHOICES)

@@ -10,7 +10,7 @@ mod keys;
 mod layered;
 
 use std::ffi::OsString;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -50,6 +50,8 @@ pub struct Loaded<T> {
     pub config: T,
     /// Where the effective value of each key came from.
     pub sources: Sources,
+    /// The configuration file that was read, if any.
+    pub file: Option<PathBuf>,
 }
 
 /// Loads the configuration of schema `T` from the inputs.
@@ -79,6 +81,7 @@ pub fn load<T: Serialize + DeserializeOwned + Default>(
             return Ok(Loaded {
                 config,
                 sources: tree.sources(),
+                file: inputs.file.map(Path::to_path_buf),
             });
         }
         Ok(_) => {}

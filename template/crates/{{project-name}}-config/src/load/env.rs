@@ -43,31 +43,55 @@ impl Layered {
 
     /// `<PREFIX>_<SECTION>__<KEY>` sets `section.key`; the value is always text, which each
     /// field type parses. A prefixed name without `__` after the prefix is not a key
-    /// (`<PREFIX>_CONFIG` names the file), so it is left alone.
+    /// (`<PREFIX>_CONFIG` names the file, Kubernetes adds `<PREFIX>_SERVICE_HOST`), so it is
+    /// left alone, unless it spells a key with `_` where `__` belongs: that is a typo, and
+    /// the problem names the variable meant.
     pub(super) fn merge_env(&mut self, prefix: &str, env: &[(OsString, OsString)]) {
         let start = format!("{prefix}_");
         // A name that is not UTF-8 is shown with U+FFFD; it can only be an unknown key.
         let mut vars: Vec<(String, &OsString)> = (env.iter())
             .map(|(name, value)| (name.to_string_lossy().into_owned(), value))
-            .filter(|(name, _)| {
-                name.strip_prefix(&start)
-                    .is_some_and(|rest| rest.contains("__"))
-            })
+            .filter(|(name, _)| name.starts_with(&start))
             .collect();
         vars.sort();
         for (name, value) in vars {
-            let key = name[start.len()..].to_ascii_lowercase().replace("__", ".");
+            let rest = &name[start.len()..];
             let source = Source::Env(name.clone());
+            let meant = self
+                .spelled_like(rest)
+                .map(|leaf| (variable(prefix, &leaf), leaf));
+            if !rest.contains("__") {
+                if let Some((variable, leaf)) = meant {
+                    let detail = format!(
+                        "not read, since `__` separates the parts of a key; did you mean {variable}?"
+                    );
+                    self.problems.push(Problem::at(&leaf, &source, &detail));
+                }
+                continue;
+            }
+            let key = rest.to_ascii_lowercase().replace("__", ".");
             if self.leaves.contains(&key) {
                 self.set_text(&key, value, source);
             } else if self.sections.contains(&key) {
                 self.problems
                     .push(Problem::at(&key, &source, "is a section, not a key"));
             } else {
-                self.problems
-                    .push(Problem::at(&key, &source, "unknown key"));
+                let detail = meant.map_or_else(
+                    || "unknown key".to_string(),
+                    |(variable, _)| format!("unknown key; did you mean {variable}?"),
+                );
+                self.problems.push(Problem::at(&key, &source, &detail));
             }
         }
+    }
+
+    /// The key a variable name spells when `_` and `__` are not told apart, such as
+    /// `server.http_addr` for `SERVER_HTTP_ADDR`.
+    fn spelled_like(&self, rest: &str) -> Option<String> {
+        let flat = rest.to_ascii_lowercase().replace("__", "_");
+        (self.leaves.iter())
+            .find(|leaf| leaf.replace('.', "_") == flat)
+            .cloned()
     }
 
     /// Environment values that are not UTF-8 and still take effect.
@@ -78,4 +102,10 @@ impl Layered {
             self.problems.push(Problem::at(&key, &source, &detail));
         }
     }
+}
+
+/// The variable that sets a key: `server.http_addr` with prefix `APP` is
+/// `APP_SERVER__HTTP_ADDR`.
+fn variable(prefix: &str, key: &str) -> String {
+    format!("{prefix}_{}", key.to_ascii_uppercase().replace('.', "__"))
 }
