@@ -28,6 +28,7 @@ uuid.workspace = true
 [dev-dependencies]
 {{project-name}}-test-utils.workspace = true
 http-body-util.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
 tower.workspace = true
 
 [lints]

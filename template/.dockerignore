@@ -1,0 +1,7 @@
+# Not part of the image build: build output, git data (the commit comes in as a build
+# argument), the pinned toolchain (the build image brings its own) and local files.
+target/
+.git/
+rust-toolchain.toml
+logs/
+dist/

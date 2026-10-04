@@ -1,0 +1,37 @@
+# Drives the interactive project-name prompt: an invalid name must be rejected with the rule
+# message and asked again, a valid one accepted.
+# usage: expect scripts/names.exp CARGO_GENERATE TEMPLATE_ROOT DESTINATION
+set timeout 60
+set cg [lindex $argv 0]
+set root [lindex $argv 1]
+set dest [lindex $argv 2]
+spawn $cg generate --path $root --destination $dest --vcs none --no-workspace \
+    -d license=MIT -d with_docker=false -d with_ci=false \
+    -d authors=Names -d year=2026
+expect {
+    "Project name" {}
+    timeout { puts "\nnames.exp: no prompt"; exit 10 }
+    eof { puts "\nnames.exp: exited before prompting"; exit 11 }
+}
+sleep 1
+send -- "x\r"
+expect {
+    "invalid project name 'x': use 2 to 64 characters" {}
+    timeout { puts "\nnames.exp: invalid name not rejected"; exit 12 }
+    eof { puts "\nnames.exp: exited after an invalid name"; exit 13 }
+}
+expect {
+    "Project name" {}
+    timeout { puts "\nnames.exp: not asked again"; exit 14 }
+    eof { puts "\nnames.exp: exited instead of asking again"; exit 15 }
+}
+sleep 1
+send -- "qx-tty\r"
+expect {
+    "Done!" {}
+    "Project Name" { puts "\nnames.exp: cargo-generate prompted as well"; exit 16 }
+    timeout { puts "\nnames.exp: no result"; exit 17 }
+    eof {}
+}
+catch wait result
+exit [lindex $result 3]

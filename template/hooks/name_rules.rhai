@@ -36,16 +36,34 @@ fn is_well_formed(name) {
     previous != '-'
 }
 
+// The dependencies of the template, and names whose crates would be called like one (such as
+// `http-body`, whose `-util` crate would be `http-body-util`): two packages of one name break
+// the workspace.
+fn dependency_names() {
+    [
+        "async-trait", "axum", "cargo-metadata", "cargo_metadata", "clap", "console-subscriber",
+        "flate2", "http-body", "http-body-util", "log", "serde", "serde-json", "serde_json",
+        "time", "tokio", "toml", "tower", "tower-http", "tracing", "tracing-appender",
+        "tracing-subscriber", "uuid", "vergen-gitcl",
+    ]
+}
+
 fn is_reserved(name) {
     reserved_names().contains(name)
 }
 
+fn is_dependency(name) {
+    dependency_names().contains(name)
+}
+
 fn is_valid(name) {
-    is_well_formed(name) && !is_reserved(name)
+    is_well_formed(name) && !is_reserved(name) && !is_dependency(name)
 }
 
 fn message(name) {
-    if is_well_formed(name) {
+    if is_dependency(name) {
+        `invalid project name '${name}': a dependency of the template has this name`
+    } else if is_well_formed(name) {
         `invalid project name '${name}': the name is reserved`
     } else {
         `invalid project name '${name}': use 2 to 64 characters: lowercase letters, digits and single hyphens, starting with a letter`

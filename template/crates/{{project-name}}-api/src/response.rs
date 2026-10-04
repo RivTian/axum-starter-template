@@ -60,3 +60,32 @@ impl<T: Serialize> IntoResponse for ApiResponse<T> {
         response
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+    use serde::ser::{Error as _, Serialize, Serializer};
+
+    use super::ApiResponse;
+
+    /// A body whose serialization fails.
+    struct Broken;
+
+    impl Serialize for Broken {
+        fn serialize<S: Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+            Err(S::Error::custom("broken on purpose"))
+        }
+    }
+
+    #[test]
+    fn a_body_that_does_not_serialize_becomes_a_pending_problem() {
+        let response = ApiResponse::Ok(Broken).into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            response.extensions().len(),
+            1,
+            "the error waits for the problem middleware"
+        );
+    }
+}

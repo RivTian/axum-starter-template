@@ -2,11 +2,18 @@
 
 use svc_util::prelude::*;
 
-/// A log filter does not parse.
+/// The log settings cannot work, such as the `console` feature without `tokio_unstable`.
 pub const LOG_CONFIG_INVALID: ErrorType = ErrorType::Kind(&ErrorKind::new(
     "LogConfigInvalid",
     Class::Internal,
     "Invalid log configuration",
+));
+
+/// A log output cannot be opened, such as a log directory that cannot be created.
+pub const LOG_OUTPUT_UNAVAILABLE: ErrorType = ErrorType::Kind(&ErrorKind::new(
+    "LogOutputUnavailable",
+    Class::Internal,
+    "Log output unavailable",
 ));
 
 /// A global subscriber is already set.

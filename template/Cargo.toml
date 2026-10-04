@@ -23,18 +23,24 @@ publish = false
 {{project-name}}-test-utils = { path = "crates/{{project-name}}-test-utils" }
 async-trait = { version = "0.1.92", default-features = false }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio", "matched-path", "query"] }
+clap = { version = "4.6.7", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
 cargo_metadata = { version = "0.23.1", default-features = false }
 tower = { version = "0.5.3", default-features = false, features = ["util"] }
 tower-http = { version = "0.7.1", default-features = false, features = ["catch-panic"] }
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+console-subscriber = { version = "0.5.0", default-features = false }
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 http-body-util = { version = "0.1.5", default-features = false }
+log = { version = "0.4.34", default-features = false }
 serde = { version = "1.0.229", default-features = false, features = ["std"] }
 serde_json = { version = "1.0.151", default-features = false, features = ["std"] }
 time = { version = "0.3.55", default-features = false, features = ["std", "formatting", "macros"] }
 tokio = { version = "1.53.1", default-features = false, features = ["rt-multi-thread", "net", "signal", "time", "sync", "macros"] }
 toml = { version = "1.1.6", default-features = false, features = ["std", "parse", "serde"] }
+tracing-appender = { version = "0.2.5", default-features = false }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["std", "registry", "fmt", "ansi", "json", "env-filter", "tracing-log", "time"] }
 uuid = { version = "1.26.1", default-features = false, features = ["std", "v7"] }
+vergen-gitcl = { version = "9.1", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -1,0 +1,41 @@
+# On a version tag: build the release archive with `just package` and publish it as a
+# GitHub Release.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_LOCKED: --locked
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require a committed Cargo.lock
+        run: |
+          test -f Cargo.lock || { echo "::error::Cargo.lock is not committed; run cargo generate-lockfile and commit it"; exit 1; }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - run: just package
+      - name: The packaged binary knows its commit
+        run: |
+          binary="$(find dist -mindepth 2 -maxdepth 2 -type f -perm -u+x)"
+          test "$(echo "$binary" | wc -l)" -eq 1 || { echo "::error::expected one executable in dist/, found: $binary"; exit 1; }
+          version="$("$binary" --version)"
+          echo "$version"
+          case "$version" in
+            *"(unknown)"*) echo "::error::the binary does not know its git commit"; exit 1 ;;
+          esac
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz --title "$GITHUB_REF_NAME" --generate-notes

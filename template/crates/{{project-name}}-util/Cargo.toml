@@ -13,7 +13,12 @@ publish.workspace = true
 name = "svc_util"
 
 [dependencies]
+serde.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+serde = { workspace = true, features = ["derive"] }
+toml.workspace = true
 
 [lints]
 workspace = true

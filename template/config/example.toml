@@ -1,0 +1,51 @@
+# Configuration of {{project-name}}.
+#
+# Every value below is the default, so this file changes nothing as it is: copy it, keep the
+# keys you want to change, and pass the copy with `--config <path>` or the environment
+# variable {{project-name | shouty_snake_case}}_CONFIG. No other file is read.
+#
+# Priority, lowest first: the defaults, this file, RUST_LOG (for log.filter only),
+# environment variables named {{project-name | shouty_snake_case}}_<SECTION>__<KEY>, such as
+# {{project-name | shouty_snake_case}}_SERVER__HTTP_ADDR, and the flags --http-addr,
+# --log-filter and --log-format. Unknown keys are rejected.
+# `{{project-name}} check-config` prints every value and where it came from.
+
+[server]
+# Address to listen on.
+http_addr = "127.0.0.1:8080"
+# A request that takes longer gets 503. 1s to 300s.
+request_timeout = "15s"
+# A larger request body gets 413. 1 to 67108864.
+body_limit_bytes = 1048576
+
+[lifecycle]
+# Every service must be ready within this time. 1s to 600s.
+startup_timeout = "30s"
+# After SIGTERM, readiness reports 503 for this long while requests are still served, so
+# that a load balancer can take the instance out. 0s to 60s.
+drain_delay = "5s"
+# Then the services have this long to stop. 1s to 300s.
+drain_timeout = "20s"
+
+[events]
+# How many events the in-process bus holds for a slow subscriber before it skips the
+# oldest. 1 to 65536.
+capacity = 1024
+
+[log]
+# auto (text on a terminal, JSON otherwise), text or json.
+format = "auto"
+# Which events go to stdout, in EnvFilter syntax, such as "info,svc_api::access=warn".
+filter = "info"
+# Colors in text output: auto (on a terminal, unless NO_COLOR is set or TERM is dumb),
+# always or never.
+color = "auto"
+
+[log.file]
+# Also write <dir>/{{project-name}}.log, rolled daily into compressed archives.
+enabled = false
+dir = "logs"
+# Filter for the file; empty means the same as log.filter.
+filter = ""
+# How many compressed archives to keep. 1 to 365.
+max_archives = 14

@@ -40,8 +40,8 @@ fn json_rejection(rejection: &JsonRejection) -> ApiError {
     ApiError(Error::explain(etype, reason).into_down())
 }
 
-/// The path's one parameter, parsed with `FromStr`; one that does not parse gives 400 with
-/// the reason as the detail.
+/// The path's one parameter, parsed with `FromStr`; one that is not UTF-8 or does not parse
+/// gives 400 with the reason as the detail.
 #[derive(Debug)]
 pub(crate) struct ApiPath<T>(pub(crate) T);
 
@@ -54,9 +54,10 @@ where
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        // The framework's own text names its internals; a fixed reason says what matters.
         let Path(text) = Path::<String>::from_request_parts(parts, state)
             .await
-            .map_err(|rejection| bad_path(rejection.body_text()))?;
+            .map_err(|_| bad_path("invalid path parameter: not valid UTF-8 text".to_string()))?;
         text.parse()
             .map(ApiPath)
             .map_err(|error| bad_path(format!("invalid path parameter {text:?}: {error}")))

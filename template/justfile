@@ -7,8 +7,16 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 default:
     @just --list
 
+# Run the service with the example configuration.
+run:
+    cargo run -p {{project-name}} -- run --config config/example.toml
+
+# Check the example configuration and print every key's value and source.
+check-config:
+    cargo run -p {{project-name}} -- check-config --config config/example.toml
+
 # Every quality check, in the order CI runs them.
-check: fmt-check lint test doc typos machete deny
+check: fmt-check lint test doc typos machete deny{% if with_ci %} workflows{% endif %}
 
 # Format the code.
 fmt:
@@ -43,7 +51,45 @@ machete:
 # Licenses, security advisories and sources of the dependencies.
 deny:
     cargo deny check
+{%- if with_ci %}
+
+# The GitHub Actions workflows.
+workflows:
+    actionlint .github/workflows/*.yml
+{%- endif %}
 
 # The oldest supported Rust.
 msrv:
     cargo +1.88 check --workspace --all-targets ${CARGO_LOCKED:-}
+
+# Run with tokio-console support; connect with `tokio-console`.
+console:
+    RUSTFLAGS="--cfg tokio_unstable" cargo run -p {{project-name}} --features console -- run --config config/example.toml
+
+# The console feature: its error without the cfg, then a build with the cfg, in a target
+# directory of its own so the cfg never reaches the main build cache.
+console-check:
+    cargo nextest run -p {{project-name}}-telemetry --features console ${CARGO_LOCKED:-} -E 'test(the_console_needs_tokio_unstable)'
+    RUSTFLAGS="--cfg tokio_unstable" CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}/console" cargo check -p {{project-name}} --features console ${CARGO_LOCKED:-}
+
+# A release archive: dist/{{project-name}}-<version>-<target>.tar.gz with the binary,
+# README.md, THIRD_PARTY_NOTICES.md and LICENSE (when there is one).
+package:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build --release ${CARGO_LOCKED:-} -p {{project-name}}
+    target="$(rustc -vV | sed -n 's/^host: //p')"
+    version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+    name="{{project-name}}-${version}-${target}"
+    rm -rf "dist/${name}" && mkdir -p "dist/${name}"
+    cp "${CARGO_TARGET_DIR:-target}/release/{{project-name}}" README.md THIRD_PARTY_NOTICES.md "dist/${name}/"
+    if [ -f LICENSE ]; then cp LICENSE "dist/${name}/"; fi
+    tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+    echo "dist/${name}.tar.gz"
+{%- if with_docker %}
+
+# The container image, tagged {{project-name}}:dev, with the current commit as its git SHA;
+# `unknown` before the first commit.
+docker-build:
+    docker build --build-arg GIT_SHA="$(git rev-parse --verify --quiet HEAD || echo unknown)" -t {{project-name}}:dev .
+{%- endif %}

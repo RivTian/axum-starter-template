@@ -78,3 +78,49 @@
 
 - `HEAD` 与 hyper 层的拒绝、`check-config` 等附录 A 其余条目：属于 P2。
 - cargo-generate 0.25.0：同 P0。
+
+## P2 · 补全
+
+**做了什么**（提交 `3be7369` 至本节所在的提交）
+
+- 配置：各 crate 的配置段加上 serde 与取值校验（`svc_util::de`）；config 移植 V4 的加载语义，按来源拆成 `load/{layered,file,env,keys}.rs`；返回 `Report`（数据）；`check-config` 的表格在 `table.rs`。
+- telemetry：stdout（text/JSON、颜色）与滚动 gzip 文件各有过滤器；文件层用自己的字段格式化器类型（C-37）；再次 `init` 在碰文件之前报错；panic 钩子最先安装；`console` feature。
+- bin：CLI（`run`、`check-config`、`probe`）、版本信息（vergen-gitcl）、退出码 64 与 78、`config/example.toml` 与默认值一致的测试；进程级测试 11 个。
+- 生成项目：Dockerfile、三个 workflow、`just` 配方、README、`docs/architecture.md`（191 行）。
+- 模板仓库：`check.sh --full`、`names.sh`（新增"与依赖重名"规则）、`version-info.sh`、`template-ci.yml`、维护者 README。
+
+**检查**
+
+| 命令                       | 结果                                         |
+| -------------------------- | -------------------------------------------- |
+| `just check`（5 个组合）   | 全部通过；m2 共 120 个测试                   |
+| `just full m1`、`m4`、`m2` | m1、m4 全部通过；m2 除 Docker 三步外全部通过 |
+| `just names`               | 全部通过（含 `tokio`、`http-body` 被拒）     |
+| `just version-info`        | 15 个场景全部通过（首次提交前为 `unknown`）  |
+| `just lint`、actionlint    | 通过                                         |
+
+**偏离任务书**
+
+- 校验器模块命名为 `svc_util::de`，不叫 `settings`：词表中 `settings.rs` 专指本 crate 拥有的配置段。
+- 加载器去掉了 V4 的 `checks` 函数指针钩子：过滤串由 telemetry 的反序列化器校验，在"逐键定位"中与其他问题一起报出。`RUST_LOG` 不再写死，由 bin 以别名表传入。
+- 非 UTF-8 的路径参数回答固定的 `detail`（`invalid path parameter: not valid UTF-8 text`）。hyper 在路由之前拒绝的请求无法成为 problem，已在生成项目文档中写明不支持。
+- 项目名不得与模板的依赖重名（`tokio` 会让 `[workspace.dependencies]` 出现两个同名键），也不得使派生的 crate 名与依赖重名（`http-body` 加 `-util`）。
+- `Secret` 与加载器的密钥脱敏保留：默认配置里没有密钥，但这是加数据库连接串时的扩展点。
+- 配置、日志与 CLI 合成一个提交：三者相互依赖，拆开后中间提交无法通过检查。
+- 全量档中镜像用 `rs-starter-template-check-<name>` 标签，不经过 `just docker-build`（它打 `<name>:dev`），以免触碰用户已有的镜像。
+
+**超出规模预算**
+
+- 生成项目非测试代码 6533 行（V4 约 7350 行），软上限 5500 行。主要来自：config 加载器 549 行、telemetry 723 行（滚动文件 334 行）、util 的校验器与时长 551 行、vendor 约 620 行。测试代码 3424 行，在 5000 行以内。
+- 加载器（`load.rs` + `load/`）549 行，在 800 行以内；维护脚本合计约 1020 行，在 1200 行以内。
+
+**流程**
+
+- 一次在后台全量档运行期间修改了 `check.sh`；那次结果未受影响（退出码 0），之后用新脚本重跑了 m1 的全量档。
+- api 的测试用到暂停时间，但 api 没有声明 tokio 的 `test-util`，之前靠 workspace 的 feature 合并才编译通过；已显式声明。
+
+**未验证**
+
+- Docker：本机 Docker 守护进程（OrbStack）没有运行，m2、m3、m5 的"无 lock 文件时镜像构建报错""镜像构建""镜像冒烟"三步未执行。没有擅自启动守护进程。
+- cargo-generate 0.25.0：本机只有 0.24.0，`just compare` 无法运行；模板 CI 会安装两个版本。
+- 模板 CI 尚未在 GitHub 上运行；workflow 中 Actions 的版本沿用 V4（如 `actions/checkout@v4`），未核对当前最新的主版本。

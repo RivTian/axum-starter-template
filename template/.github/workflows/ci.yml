@@ -1,0 +1,49 @@
+# Quality checks on every push and pull request: the justfile's `check` recipe, the oldest
+# supported Rust, and the console feature.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_LOCKED: --locked
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require a committed Cargo.lock
+        run: |
+          test -f Cargo.lock || { echo "::error::Cargo.lock is not committed; run cargo generate-lockfile and commit it"; exit 1; }
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,cargo-deny,typos,cargo-machete,actionlint
+      - run: just check
+
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88
+      # +1.88 takes precedence over rust-toolchain.toml.
+      - run: cargo +1.88 check --workspace --all-targets --locked
+
+  console:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - run: just console-check

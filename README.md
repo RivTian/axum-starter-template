@@ -13,26 +13,37 @@ cargo generate RivTian/rs-starter-template
 
 ## Repository layout
 
-| Path                       | What                                                                        |
-| -------------------------- | --------------------------------------------------------------------------- |
-| `template/`                | The template that cargo-generate renders; nothing else in the repo is       |
-| `scripts/matrix.tsv`       | The combinations of placeholders that are rendered and checked              |
-| `scripts/render.sh`        | Renders combinations into a temporary directory                             |
-| `scripts/check.sh`         | Runs each rendered project's own `just check`, outside this repository      |
-| `scripts/template-lint.py` | Keeps the template self-contained and its crates within the structure rules |
-| `justfile`                 | The maintainer recipes below                                                |
+| Path                              | What                                                                                     |
+| --------------------------------- | ---------------------------------------------------------------------------------------- |
+| `template/`                       | The template that cargo-generate renders; nothing else in the repo is                    |
+| `scripts/matrix.tsv`              | The combinations of placeholders that are rendered and checked                           |
+| `scripts/render.sh`               | Renders combinations into a temporary directory                                          |
+| `scripts/check.sh`                | Runs each rendered project's checks, outside this repository                             |
+| `scripts/template-lint.py`        | Keeps the template self-contained and its crates within the structure rules              |
+| `scripts/vendor-pingora-error.py` | Vendors pingora-error and proves the vendored files are upstream plus the listed patches |
+| `scripts/names.sh`, `names.exp`   | The project-name rules on every input path                                               |
+| `scripts/version-info.sh`         | The binary's version information in six git scenarios                                    |
 
 ## Maintainer recipes
 
-| Recipe              | What                                                    |
-| ------------------- | ------------------------------------------------------- |
-| `just lint`         | Template lint, its self-test, and shellcheck            |
-| `just render [ids]` | Render the given combinations, or all of them           |
-| `just check [ids]`  | Render and check the given combinations, or all of them |
-| `just commit`       | The per-commit tier: lint, then render and check `m2`   |
+| Recipe              | What                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------ |
+| `just lint`         | Template lint and its self-test, the vendored files, shellcheck, actionlint                |
+| `just render [ids]` | Render the given combinations, or all of them                                              |
+| `just check [ids]`  | Render and run each project's own `just check`                                             |
+| `just full [ids]`   | Render and run the full check: smoke runs, MSRV, console, package, lock-file errors, image |
+| `just commit`       | The per-commit tier: lint, then render and check `m2`                                      |
+| `just compare`      | Render with `CG_MIN` and `CG_LATEST` and require identical output                          |
+| `just names`        | The project-name rules, with `CG_MIN` and `CG_LATEST`                                      |
+| `just version-info` | The version information scenarios                                                          |
 
 Rendered projects land in `$TMPDIR/rs-starter-template-render/<id>/<name>`; set
-`RENDER_DIR` to use another directory and `CG` to use another cargo-generate.
+`RENDER_DIR` to use another directory and `CG` to use another cargo-generate. The full check
+builds container images only under the tag `rs-starter-template-check-<name>` and removes
+them afterwards.
+
+To update the vendored pingora-error, change the pinned commit and hashes in
+`scripts/vendor-pingora-error.py`, run it, and review the diff.
 
 ## License
 

@@ -346,3 +346,28 @@ async fn a_failed_request_is_logged_once_with_the_error_fields() -> TestResult {
     assert_eq!(finished[0].get("target"), Some(&json!("svc_api::access")));
     Ok(())
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_request_the_client_gives_up_on_is_still_logged() -> TestResult {
+    let (logs, _guard) = CapturedLogs::start();
+    let api = api();
+    api.repository.slow_down(Duration::from_millis(500));
+    let request = Request::get("/v1/todos").body(Body::empty())?;
+    let gave_up = tokio::time::timeout(Duration::from_millis(100), api.send(request)).await;
+    assert!(gave_up.is_err());
+    let finished = logs.with_message("request finished");
+    assert_eq!(finished.len(), 1);
+    assert_eq!(finished[0].get("cancelled"), Some(&json!(true)));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_path_that_is_not_utf8_gets_a_fixed_reason() -> TestResult {
+    let answer = api().call(Method::GET, "/v1/todos/%FF", None).await?;
+    assert_eq!(answer.status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        answer.body["detail"],
+        "invalid path parameter: not valid UTF-8 text"
+    );
+    Ok(())
+}
