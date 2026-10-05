@@ -7,12 +7,15 @@
 # from the render directory (see scripts/render.sh) to a fresh temporary directory and made
 # a git repository with one commit. The default checks it with the generated project's own
 # `just check`. --full also runs, with --locked once the lock file exists: smoke runs of
-# `check-config` and `run`, `just msrv`, `just console-check`, `just package` and the
-# archive's contents, the lock-file errors of CI and of the image build, and for
-# combinations with a Dockerfile the image build and a smoke test. Images are tagged
+# `check-config` and `run`, `just package` and the archive's contents, the lock-file errors
+# of CI and of the image build, and for combinations with a Dockerfile the image build and a
+# smoke test. The checks that no placeholder changes (`just msrv`, `just console-check`, and
+# `just package` under another CARGO_TARGET_DIR) run only for the combinations whose
+# `shared` column in matrix.tsv says yes. Images are tagged
 # rs-starter-template-check-<name>; no other image is created or removed.
-# The checks below are called through run() and step(), which shellcheck cannot follow.
-# shellcheck disable=SC2329
+# The checks below are called through run() and step(), and cleanup() by trap, which the
+# linter cannot follow: version 0.9 reports them as SC2317, 0.10 and later as SC2329.
+# shellcheck disable=SC2317,SC2329
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -162,8 +165,9 @@ step() {
 }
 
 full() {
-  # $1: the project name, $2: the directory of this copy.
-  local name="$1" dir="$2" prefix nolock image="rs-starter-template-check-$1" failed=0
+  # $1: the project name, $2: the directory of this copy, $3: whether to run the shared
+  # checks (yes or no).
+  local name="$1" dir="$2" shared="$3" prefix nolock image="rs-starter-template-check-$1" failed=0
   prefix="$(sed -n 's/^pub(crate) const ENV_PREFIX: &str = "\(.*\)";$/\1/p' "crates/$name/src/names.rs")"
   step just --list
   # No lock file yet: the recipes must work without --locked, and create it.
@@ -174,12 +178,16 @@ full() {
   export CARGO_LOCKED=--locked
   step check_config
   step serves "$name" "$prefix"
-  step just msrv
-  step just console-check
+  if [ "$shared" = yes ]; then
+    step just msrv
+    step just console-check
+  fi
   step just package
   step archive_holds "$name"
-  # With CARGO_TARGET_DIR set, the recipe must still find the binary.
-  step env CARGO_TARGET_DIR="$PWD/target/elsewhere" just package
+  if [ "$shared" = yes ]; then
+    # With CARGO_TARGET_DIR set, the recipe must still find the binary.
+    step env CARGO_TARGET_DIR="$PWD/target/elsewhere" just package
+  fi
   # Inside the work directory, so that the cleanup on exit removes it too.
   nolock="$(dirname "$dir")/nolock"
   mkdir "$nolock"
@@ -216,6 +224,7 @@ status=0
 for id in "$@"; do
   name="$(awk -F'\t' -v id="$id" '$1 == id { print $2 }' "$matrix")"
   [ -n "$name" ] || { echo "check.sh: unknown combination $id" >&2; exit 2; }
+  shared="$(awk -F'\t' -v id="$id" '$1 == id { print $6 }' "$matrix")"
   src="$render_dir/$id/$name"
   [ -d "$src" ] || { echo "check.sh: $src does not exist; run scripts/render.sh first" >&2; exit 2; }
   work="$(mktemp -d)"
@@ -230,7 +239,7 @@ for id in "$@"; do
       git add -A &&
       git -c user.name=check -c user.email=check@example.invalid -c commit.gpgsign=false \
         commit -q -m check &&
-      if [ "$mode" = full ]; then full "$name" "$work/$name"; else run just check; fi
+      if [ "$mode" = full ]; then full "$name" "$work/$name" "$shared"; else run just check; fi
   ); then
     status=1
   fi

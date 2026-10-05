@@ -74,8 +74,8 @@ async fn a_bad_title_stores_nothing() -> TestResult {
             "todo title must have at most 200 characters"
         )
     );
-    assert!(s.service.list(10).await?.is_empty());
-    assert!(s.events.events().is_empty());
+    assert_eq!(s.service.list(10).await?, []);
+    assert_eq!(s.events.events(), []);
     Ok(())
 }
 
@@ -87,7 +87,7 @@ async fn an_unknown_todo_is_not_found() -> TestResult {
     assert_eq!(failure(s.service.get(id).await)?, missing);
     assert_eq!(failure(s.service.complete(id, 1).await)?, missing);
     assert_eq!(failure(s.service.delete(id).await)?, missing);
-    assert!(s.events.events().is_empty());
+    assert_eq!(s.events.events(), []);
     Ok(())
 }
 
@@ -184,6 +184,6 @@ async fn repository_failures_pass_through_unchanged() -> TestResult {
     };
     assert_eq!(error.etype(), &ErrorType::ConnectRefused);
     assert_eq!(error.esource(), &ErrorSource::Upstream);
-    assert!(s.events.events().is_empty());
+    assert_eq!(s.events.events(), []);
     Ok(())
 }

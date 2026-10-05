@@ -31,11 +31,11 @@ cargo generate RivTian/rs-starter-template
 | `just lint`         | Template lint and its self-test, the vendored files, shellcheck, actionlint                |
 | `just render [ids]` | Render the given combinations, or all of them                                              |
 | `just check [ids]`  | Render and run each project's own `just check`                                             |
-| `just full [ids]`   | Render and run the full check: smoke runs, MSRV, console, package, lock-file errors, image |
-| `just commit`       | The per-commit tier: lint, then render and check `m2`                                      |
+| `just full [ids]`   | Render and run the full check: smoke runs, package, lock-file errors, image; MSRV and console where `matrix.tsv` marks `shared` |
+| `just commit`       | The per-commit tier, as CI runs it on a push to main: lint, then render and check `m2`     |
 | `just names`        | The project-name rules                                                                     |
 | `just version-info` | The version information scenarios                                                          |
-| `just ci`           | Everything the template CI runs, in the same order                                         |
+| `just ci`           | The full tier, as CI runs it on pull requests, weekly, by hand and on tags                 |
 
 Rendered projects land in `$TMPDIR/rs-starter-template-render/<id>/<name>`; set
 `RENDER_DIR` to use another directory and `CG` to use another cargo-generate. The full check
@@ -43,8 +43,9 @@ builds container images only under the tag `rs-starter-template-check-<name>` an
 them afterwards.
 
 The template requires and is tested with one cargo-generate version, set in
-`template/cargo-generate.toml` and in `.github/workflows/template-ci.yml`; raise both together.
-`just ci` runs what CI runs, with the `cargo-generate` on `PATH`.
+`template/cargo-generate.toml` and in `.github/actions/install-cargo-generate/action.yml`
+(with the release's SHA-256); raise both together. `just ci` runs what CI runs, with the
+`cargo-generate` on `PATH`.
 
 To update the vendored pingora-error, change the pinned commit and hashes in
 `scripts/vendor-pingora-error.py`, run it, and review the diff.

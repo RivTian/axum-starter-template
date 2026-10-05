@@ -17,7 +17,7 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Require a committed Cargo.lock
         run: |
           test -f Cargo.lock || { echo "::error::Cargo.lock is not committed; run cargo generate-lockfile and commit it"; exit 1; }
@@ -27,13 +27,26 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: just,cargo-nextest,cargo-deny,typos,cargo-machete,actionlint
+          tool: just,cargo-nextest,cargo-deny,typos,cargo-machete
+      # actionlint is no longer in install-action's list: its own release, checked against
+      # the checksums it publishes.
+      - name: Install actionlint
+        run: |
+          version=1.7.12
+          file="actionlint_${version}_linux_amd64.tar.gz"
+          base="https://github.com/rhysd/actionlint/releases/download/v${version}"
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o "$file" "$base/$file" -o checksums.txt "$base/actionlint_${version}_checksums.txt"
+          grep " ${file}\$" checksums.txt | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$file" -C "$HOME/.local/bin" actionlint
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: just check
 
   msrv:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.88
       # +1.88 takes precedence over rust-toolchain.toml.
       - run: cargo +1.88 check --workspace --all-targets --locked
@@ -41,7 +54,7 @@ jobs:
   console:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:

@@ -1,0 +1,20 @@
+name: Install cargo-generate
+description: >
+  The release binary of the one cargo-generate version the template supports, checked
+  against its digest, on PATH and in CG. Keep the version equal to cargo_generate_version
+  in template/cargo-generate.toml.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        version=0.25.0
+        sha256=2e71538c10410827579987c546db7030f71c0283774891bd8ebf107962260e80
+        file="cargo-generate-v${version}-x86_64-unknown-linux-gnu.tar.gz"
+        cd "$RUNNER_TEMP"
+        curl -sSfL -o "$file" "https://github.com/cargo-generate/cargo-generate/releases/download/v${version}/${file}"
+        echo "${sha256}  ${file}" | sha256sum -c -
+        mkdir -p "$HOME/.local/bin"
+        tar -xzf "$file" -C "$HOME/.local/bin" cargo-generate
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        echo "CG=$HOME/.local/bin/cargo-generate" >> "$GITHUB_ENV"

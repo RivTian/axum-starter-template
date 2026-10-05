@@ -1,0 +1,18 @@
+name: Install actionlint
+description: >
+  actionlint from its own release, checked against the checksums it publishes, on PATH;
+  install-action no longer lists it.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        version=1.7.12
+        file="actionlint_${version}_linux_amd64.tar.gz"
+        base="https://github.com/rhysd/actionlint/releases/download/v${version}"
+        cd "$RUNNER_TEMP"
+        curl -sSfL -o "$file" "$base/$file" -o checksums.txt "$base/actionlint_${version}_checksums.txt"
+        grep " ${file}\$" checksums.txt | sha256sum -c -
+        mkdir -p "$HOME/.local/bin"
+        tar -xzf "$file" -C "$HOME/.local/bin" actionlint
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"

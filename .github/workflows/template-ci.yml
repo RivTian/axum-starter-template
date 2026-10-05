@@ -1,37 +1,70 @@
 # CI of the template repository: every job calls a maintainer recipe from the justfile, and
-# the combinations come from scripts/matrix.tsv.
+# the combinations come from scripts/matrix.tsv. Two tiers, as locally: a push to main runs
+# the lint and the default combination's own `just check` (what `just commit` runs); pull
+# requests, a weekly run, a manual run and tags run every combination in full, the names and
+# the version information (what `just ci` runs). Changes to this repository's own docs run
+# nothing; the template's docs are under template/ and do.
 name: template-ci
 
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore: ["docs/**", "*.md"]
   pull_request:
+    paths-ignore: ["docs/**", "*.md"]
+  schedule:
+    # Weekly, so that new releases of Rust, Clippy and the dependencies show up here first.
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+# A newer run of the same kind for the same branch or pull request replaces the older one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 env:
   CARGO_TERM_COLOR: always
-  # The cargo-generate version the template supports and is tested with; keep it equal to
-  # cargo_generate_version in template/cargo-generate.toml.
-  CG_VERSION: 0.25.0
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # No Rust: the lint is Python and shell; the runner image has python3 and shellcheck.
       - uses: taiki-e/install-action@v2
         with:
-          tool: just,actionlint
+          tool: just
+      - uses: ./.github/actions/install-actionlint
       - run: just lint
 
+  # A push to main: the default combination, checked by its own `just check`.
+  quick:
+    if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,cargo-machete,typos,cargo-deny
+      - uses: ./.github/actions/install-actionlint
+      - uses: ./.github/actions/install-cargo-generate
+      - run: just check m2
+
   setup:
+    if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     outputs:
       combos: ${{ steps.matrix.outputs.combos }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: matrix
         run: |
           combos="$(python3 -c 'import csv, json; print(json.dumps([r["id"] for r in csv.DictReader(open("scripts/matrix.tsv"), delimiter="\t")]))')"
@@ -45,73 +78,48 @@ jobs:
       matrix:
         combo: ${{ fromJSON(needs.setup.outputs.combos) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.88
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: taiki-e/install-action@v2
         with:
-          tool: just,cargo-nextest,cargo-machete,typos,cargo-deny,actionlint
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cg
-          key: cargo-generate-${{ runner.os }}-${{ env.CG_VERSION }}
-      - name: Install cargo-generate
-        run: |
-          if [ ! -x "$HOME/.cg/bin/cargo-generate" ]; then
-            cargo install --locked --quiet cargo-generate --version "$CG_VERSION" --root "$HOME/.cg"
-          fi
-          echo "CG=$HOME/.cg/bin/cargo-generate" >> "$GITHUB_ENV"
-      # The full check: the generated project's own `just check`, MSRV, console, smoke runs,
-      # the release archive, the lock-file errors and, for combinations with a Dockerfile,
-      # the image build and smoke test (the runner has Docker).
+          tool: just,cargo-nextest,cargo-machete,typos,cargo-deny
+      - uses: ./.github/actions/install-actionlint
+      - uses: ./.github/actions/install-cargo-generate
+      # The full check: the generated project's own `just check`, smoke runs, the release
+      # archive, the lock-file errors and, for combinations with a Dockerfile, the image build
+      # and smoke test (the runner has Docker); MSRV and console where matrix.tsv says so.
       - name: Full check of ${{ matrix.combo }}
         env:
           COMBO: ${{ matrix.combo }}
         run: just full "$COMBO"
 
   names:
+    if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/')
     needs: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v7
       - uses: taiki-e/install-action@v2
         with:
           tool: just
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cg
-          key: cargo-generate-${{ runner.os }}-${{ env.CG_VERSION }}
-      - name: Install cargo-generate
-        run: |
-          if [ ! -x "$HOME/.cg/bin/cargo-generate" ]; then
-            cargo install --locked --quiet cargo-generate --version "$CG_VERSION" --root "$HOME/.cg"
-          fi
-          echo "CG=$HOME/.cg/bin/cargo-generate" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/install-cargo-generate
       - run: sudo apt-get update && sudo apt-get install -y expect
       - run: just names
 
   version-info:
+    if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/')
     needs: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: taiki-e/install-action@v2
         with:
           tool: just
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cg
-          key: cargo-generate-${{ runner.os }}-${{ env.CG_VERSION }}
-      - name: Install cargo-generate
-        run: |
-          if [ ! -x "$HOME/.cg/bin/cargo-generate" ]; then
-            cargo install --locked --quiet cargo-generate --version "$CG_VERSION" --root "$HOME/.cg"
-          fi
-          echo "CG=$HOME/.cg/bin/cargo-generate" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/install-cargo-generate
       - run: just version-info
