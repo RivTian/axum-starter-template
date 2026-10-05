@@ -138,5 +138,8 @@ async fn serve(config: &Config) -> Exit {
     let outcome = wiring::supervisor(config, &PhaseWatch::new())
         .run(signals)
         .await;
+    if let Some(why) = exit::why(&outcome) {
+        exit::report(&why);
+    }
     Exit::of(&outcome)
 }

@@ -280,3 +280,15 @@
 | `running` 带启动耗时 | `phase changed` 进入 `running` 时带 `startup.duration`（秒） | 暂停时钟下，较慢的服务 2 秒后就绪，记为 `2.0` |
 | pre hook 提示删除残留目录 | 拒绝名字时追加"remove the directory 'x' that was created for it"；`--init` 不创建目录，不提示 | `just names`：两条路径各一项 |
 | 模板 CI 的 lint job | 去掉 Rust 1.88 与 stable 的安装：`just lint` 只用 Python 与 shell | actionlint |
+
+## 补充 · V5 对比后修复的三项
+
+对 V5（只有设计）做了五个方向的只读对比（141 条契约、架构、错误与日志、待决事项与模板工程、教训与实测行为）；按用户的决定先修以下三项，每项一个提交。
+
+| # | 问题 | 修复 | 验证 |
+| - | ---- | ---- | ---- |
+| 1 | supervisor 自己判定的失败（启动超时 69、frontline 提前返回 70）只出现在 INFO 的 `phase changed` 原因里，`log.filter = "warn"` 时无日志；69/70/75/128+n 退出时 stderr 无原因（V5 K-18~K-24、K-60~K-62） | 进入 stopping 时，若原因是 `StartupTimedOut` 或 `ServiceExited`，以 ERROR 记一次 `run failed`（失败与 panic 的服务仍只在退出时记一次）；除 0 和 1 外的退出码都在 stderr 写一行原因，含沿链的 context 与操作系统原因 | supervisor 测试：两种情形各一条 ERROR，失败的服务不重复；`exit.rs` 单元测试覆盖 0/69/70/75/130/143 的退出码与原因行；进程测试：端口占用时 stderr 为 `startup failed: service http failed: cannot listen on …: Address already in use`，二次信号时为 `… (SIGINT)`；`--log-filter off` 实测仍有原因行 |
+| 2 | axum 的 accept 失败（如文件描述符耗尽）只在其 `tracing` feature 下记录，该 feature 未开，服务每秒重试而无日志（V5 K-142） | 开启 axum 的 `tracing` feature（不新增 crate） | 进程测试：`ulimit -n 32` 下打开 64 个连接，出现 ERROR `accept error: Too many open files`；去掉该 feature 时测试失败 |
+| 3 | 事件日志的 `select!` 在"有待记事件"与"停止"之间随机选择，停机时会丢最后的事件 | `biased;`（事件优先），停止时用新增的 `EventStream::try_recv` 记完所有待记事件 | 新测试：发布 1000 个事件后立即停止，必须记下 1000 个；旧实现每次只记下约 128 个（一个协作预算）；去掉 `biased;` 也通过，说明不依赖 tokio 的协作预算细节 |
+
+**新增依赖特性**：axum 的 `tracing` feature（用户在本轮批准的修复中包含此项）。

@@ -41,13 +41,26 @@ pub(crate) fn env_prefix() -> String {
 pub(crate) fn command(args: &[&str]) -> Command {
     let mut command = Command::new(bin::BIN);
     command.args(args);
+    without_our_variables(&mut command);
+    command
+}
+
+/// Like [`command`], run by the shell with at most `files` open file descriptors.
+pub(crate) fn command_with_file_limit(files: u32, args: &[&str]) -> Command {
+    let mut command = Command::new("sh");
+    let script = format!("ulimit -n {files} && exec \"$@\"");
+    command.args(["-c", &script, "sh", bin::BIN]).args(args);
+    without_our_variables(&mut command);
+    command
+}
+
+fn without_our_variables(command: &mut Command) {
     let prefix = format!("{}_", env_prefix());
     for (name, _) in std::env::vars_os() {
         if name == "RUST_LOG" || name.to_string_lossy().starts_with(&prefix) {
             command.env_remove(name);
         }
     }
-    command
 }
 
 /// The exit code, stdout and stderr of a command that ends by itself.
@@ -137,6 +150,17 @@ impl Running {
         all.extend_from_slice(args);
         let mut command = command(&all);
         command.envs(env.iter().copied());
+        Running::spawn(command)
+    }
+
+    /// Like [`Running::start`], with at most `files` open file descriptors.
+    pub(crate) fn start_with_file_limit(config: &Path, files: u32) -> TestResult<Self> {
+        let config = config.to_string_lossy().into_owned();
+        let args = ["run", "--config", config.as_str(), "--log-format", "json"];
+        Running::spawn(command_with_file_limit(files, &args))
+    }
+
+    fn spawn(mut command: Command) -> TestResult<Self> {
         let child = command
             .stdin(Stdio::null())
             .stdout(Stdio::piped())

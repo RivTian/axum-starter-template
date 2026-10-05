@@ -1,7 +1,7 @@
 //! The in-process event bus: a thin layer over a tokio broadcast channel. Publishing never
 //! waits; a subscriber that falls behind skips the oldest events and logs how many.
 
-use tokio::sync::broadcast::{self, error::RecvError};
+use tokio::sync::broadcast::{self, error::RecvError, error::TryRecvError};
 
 /// A bus for events of type `E`. Clones share the bus.
 #[derive(Debug)]
@@ -59,6 +59,20 @@ impl<E: Clone + Send + 'static> EventStream<E> {
                     tracing::warn!(skipped, "event subscriber lagged");
                 }
                 Err(RecvError::Closed) => return None,
+            }
+        }
+    }
+
+    /// The next event if one is waiting, without waiting: `None` when none is or every bus
+    /// handle is gone. A subscriber that fell behind skips ahead as with [`EventStream::recv`].
+    pub fn try_recv(&mut self) -> Option<E> {
+        loop {
+            match self.receiver.try_recv() {
+                Ok(event) => return Some(event),
+                Err(TryRecvError::Lagged(skipped)) => {
+                    tracing::warn!(skipped, "event subscriber lagged");
+                }
+                Err(TryRecvError::Empty | TryRecvError::Closed) => return None,
             }
         }
     }

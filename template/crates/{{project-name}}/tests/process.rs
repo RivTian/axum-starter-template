@@ -205,6 +205,11 @@ fn a_second_signal_cuts_the_drain_short() -> TestResult {
     service.wait_for_phase("draining")?;
     service.signal("INT")?;
     assert_eq!(service.exit(WAIT)?, Some(130));
+    assert!(
+        (service.stderr()).contains("the shutdown was cut short by a second signal (SIGINT)"),
+        "{}",
+        service.stderr()
+    );
     Ok(())
 }
 
@@ -232,6 +237,35 @@ fn a_port_in_use_fails_the_startup_with_69() -> TestResult {
     let failed = service.with_message("service failed");
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0]["fields"]["error.type"], "BindError");
+    // Whatever the log filter, stderr says why, with the operating system's reason.
+    let stderr = service.stderr();
+    let line = format!("{}: startup failed: service http failed", service_name());
+    assert!(stderr.starts_with(&line), "{stderr}");
+    assert!(stderr.contains("in use"), "{stderr}");
+    Ok(())
+}
+
+#[test]
+fn running_out_of_file_descriptors_is_logged() -> TestResult {
+    let scratch = Scratch::new("files")?;
+    let file = config(&scratch, "0s", "5s", "")?;
+    let mut service = Running::start_with_file_limit(&file, 32)?;
+    let addr = service.running()?;
+    // Idle connections until accepting one more fails for want of a file descriptor.
+    let mut open = Vec::new();
+    for _ in 0..64 {
+        match std::net::TcpStream::connect(addr) {
+            Ok(stream) => open.push(stream),
+            Err(_) => break,
+        }
+    }
+    let failed = service.wait_for_line("accept error", |line| {
+        (line["fields"]["message"].as_str()).is_some_and(|m| m.starts_with("accept error"))
+    })?;
+    assert_eq!(failed["level"], "ERROR");
+    drop(open);
+    service.signal("INT")?;
+    assert_eq!(service.exit(WAIT)?, Some(0));
     Ok(())
 }
 

@@ -93,6 +93,14 @@ impl State {
         out
     }
 
+    /// The error that is stopping the run, when a failure is.
+    pub(super) fn failure(&self) -> Option<&Error> {
+        match &self.reason {
+            Some(Reason::Startup(error) | Reason::Fault(error)) => Some(error),
+            Some(Reason::Signal(_)) | None => None,
+        }
+    }
+
     /// The names of the services still running.
     pub(super) fn running(&self) -> Vec<&'static str> {
         (self.services.iter().zip(&self.alive))

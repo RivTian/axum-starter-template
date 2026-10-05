@@ -120,7 +120,8 @@ malformed request line, get its own plain answer, not a problem document.
 (a service ready, returning, failing or panicking, a signal, a timer) goes through one
 channel and is handled in order by a state machine, so the same events always end the same
 way. A frontline service (the HTTP server) takes traffic; a background service (the event
-log) works behind it.
+log) works behind it, is asked to stop only once the frontline services have stopped, and
+first finishes what they left it, such as the events of the last requests.
 
 | Phase      | `/readyz` | Enters when                                                         |
 | ---------- | --------- | ------------------------------------------------------------------- |
@@ -149,6 +150,11 @@ request headers keeps its connection open until the deadline, and the exit code 
 | 78        | the configuration is invalid                                               |
 | 101       | the main thread panicked, which is a bug                                   |
 | 128 + n   | a second signal cut the shutdown short (130, 143)                          |
+
+Every code other than 0 and 1 comes with one line on stderr that says why, such as
+`startup failed: service http failed: cannot listen on 127.0.0.1:8080: Address already in
+use`, whatever the log filter and wherever the logs go. A startup timeout and a service
+returning early are also logged once as `run failed` at error level.
 
 ## Configuration
 
@@ -191,7 +197,9 @@ them all. Every request runs in a span named `request` with `request_id`, create
 level so that warnings and errors carry it under any filter that lets errors of `svc_api`
 through; `request finished` (target `svc_api::access`) closes each request, also one the
 client gave up on, with `http.server.request.duration` in seconds; for `/livez` and
-`/readyz`, which orchestrators call every few seconds, at debug level. A panic is logged
+`/readyz`, which orchestrators call every few seconds, at debug level. A connection that
+cannot be accepted, as when the process runs out of file descriptors, is logged at error
+level by axum (target `axum::serve::listener`), at most once a second. A panic is logged
 with target `panic`, or written to stderr when that target is filtered out. `just console`
 runs with tokio-console support.
 

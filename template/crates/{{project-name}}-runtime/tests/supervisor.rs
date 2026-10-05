@@ -193,6 +193,34 @@ async fn running_is_logged_with_how_long_the_startup_took() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn what_the_supervisor_finds_itself_is_logged_once_as_an_error() {
+    let errors = |logs: &svc_test_utils::logs::CapturedLogs| -> Vec<String> {
+        (logs.events().iter())
+            .filter(|event| event.get("level").and_then(|l| l.as_str()) == Some("ERROR"))
+            .map(|event| {
+                let field = |name| event.get(name).and_then(|v| v.as_str()).unwrap_or_default();
+                format!("{} {}", field("message"), field("error.type"))
+            })
+            .collect()
+    };
+    let (logs, _guard) = svc_test_utils::logs::CapturedLogs::start();
+    let never_ready = http(vec![Step::UntilShutdown]);
+    assert_eq!(run(vec![never_ready], &[]).await, "startup-failed");
+    assert_eq!(errors(&logs), ["run failed StartupTimedOut"]);
+
+    let (logs, _guard) = svc_test_utils::logs::CapturedLogs::start();
+    let returns = http(vec![Step::Ready, Step::Sleep(secs(1)), Step::Return]);
+    assert_eq!(run(vec![returns, log(serving())], &[]).await, "fault");
+    assert_eq!(errors(&logs), ["run failed ServiceExited"]);
+
+    // A failing service is logged when it exits, and not a second time.
+    let (logs, _guard) = svc_test_utils::logs::CapturedLogs::start();
+    let fails = http(vec![Step::Ready, Step::Fail(ErrorType::InternalError)]);
+    assert_eq!(run(vec![fails, log(serving())], &[]).await, "fault");
+    assert_eq!(errors(&logs), ["service failed InternalError"]);
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_drain_timeout_is_logged_once() {
     let (logs, _guard) = svc_test_utils::logs::CapturedLogs::start();
     let stuck = http(vec![Step::Ready, Step::Sleep(secs(3600))]);

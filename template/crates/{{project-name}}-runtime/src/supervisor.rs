@@ -11,6 +11,7 @@ use svc_util::prelude::*;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinError;
 
+use crate::error::{SERVICE_EXITED, STARTUP_TIMED_OUT};
 use crate::phase::{Phase, PhaseWatch};
 use crate::service::{Service, ServiceContext, ServiceKind};
 use crate::settings::LifecycleSettings;
@@ -173,6 +174,14 @@ impl Supervisor {
                     Effect::Phase(phase, reason) => {
                         self.phases.set(phase);
                         tracing::info!(phase = phase.as_str(), reason, "phase changed");
+                        // A failing or panicking service was logged when it exited; what the
+                        // supervisor finds itself is logged here, once.
+                        let own = state.failure().filter(|error| {
+                            [STARTUP_TIMED_OUT, SERVICE_EXITED].contains(error.etype())
+                        });
+                        if let Some(error) = own.filter(|_| phase == Phase::Stopping) {
+                            log_error!(tracing::Level::ERROR, error, "run failed");
+                        }
                     }
                     Effect::Stop(ServiceKind::Frontline) => {
                         stop_frontline.send_replace(true);
