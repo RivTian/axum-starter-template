@@ -1,10 +1,10 @@
-# rs-starter-template
+# axum-starter-template
 
 A [cargo-generate](https://github.com/cargo-generate/cargo-generate) template for a
 multi-crate Rust service.
 
 ```bash
-cargo generate RivTian/rs-starter-template
+cargo generate RivTian/axum-starter-template
 ```
 
 > Status: under construction (sixth edition). The design is
