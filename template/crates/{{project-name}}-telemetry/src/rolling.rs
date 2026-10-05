@@ -5,7 +5,8 @@
 //! written appends to it, so restarts do not push older days out of the archives. A file
 //! or directory deleted while the service runs is created again within a second. The
 //! writer belongs to the log writer thread, so it needs no lock; it buffers, and the
-//! thread flushes after each batch of lines.
+//! thread flushes after each batch of lines. It closes the file before renaming it, which
+//! Windows requires of an open file.
 
 mod archive;
 
@@ -35,7 +36,8 @@ pub struct RollingGzipWriter {
     dir: PathBuf,
     base: String,
     current: PathBuf,
-    file: BufWriter<File>,
+    /// The open file; `None` while it is closed for a rotation or could not be reopened.
+    file: Option<BufWriter<File>>,
     file_date: Date,
     checked: Instant,
     today: Box<dyn Fn() -> Date + Send>,
@@ -114,7 +116,7 @@ impl RollingGzipWriter {
             dir: dir.to_path_buf(),
             base: base.to_string(),
             current,
-            file: BufWriter::new(file),
+            file: Some(BufWriter::new(file)),
             file_date: today(),
             checked: Instant::now(),
             today: Box::new(today),
@@ -145,16 +147,24 @@ impl RollingGzipWriter {
     fn rotate(&mut self, today: Date) -> io::Result<()> {
         let date = self.file_date;
         self.file_date = today;
-        self.file.flush()?;
-        let archive = archive_path(&self.dir, &self.base, date);
-        match fs::rename(&self.current, &archive) {
-            // A full queue leaves the archive for the next start to compress.
-            Ok(()) => drop(self.compressor.try_send(archive)),
-            // The file or its directory was deleted: there is nothing to archive.
-            Err(error) if error.kind() == ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
+        // Closed first: Windows does not rename a file that is open.
+        if let Some(mut file) = self.file.take() {
+            file.flush()?;
         }
-        self.reopen()
+        let archive = archive_path(&self.dir, &self.base, date);
+        let renamed = match fs::rename(&self.current, &archive) {
+            // A full queue leaves the archive for the next start to compress.
+            Ok(()) => {
+                self.compressor.try_send(archive).ok();
+                Ok(())
+            }
+            // The file or its directory was deleted: there is nothing to archive.
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        };
+        // Reopened whatever happened, so that the next lines are written somewhere.
+        self.reopen()?;
+        renamed
     }
 
     /// Creates the directory and the file again when either was deleted.
@@ -164,7 +174,9 @@ impl RollingGzipWriter {
             return Ok(());
         }
         // What the buffer still holds belonged to the deleted file.
-        self.file.flush().ok();
+        if let Some(file) = self.file.as_mut() {
+            file.flush().ok();
+        }
         self.reopen()?;
         let file = self.current.display();
         warn(&format!(
@@ -175,7 +187,7 @@ impl RollingGzipWriter {
 
     fn reopen(&mut self) -> io::Result<()> {
         fs::create_dir_all(&self.dir)?;
-        self.file = BufWriter::new(open_append(&self.current)?);
+        self.file = Some(BufWriter::new(open_append(&self.current)?));
         Ok(())
     }
 
@@ -202,14 +214,19 @@ impl Write for RollingGzipWriter {
         {
             self.fail(&error);
         }
-        if let Err(error) = self.file.write_all(buf) {
+        if self.file.is_none()
+            && let Err(error) = self.reopen()
+        {
+            self.fail(&error);
+        }
+        if let Some(Err(error)) = self.file.as_mut().map(|file| file.write_all(buf)) {
             self.fail(&error);
         }
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        if let Err(error) = self.file.flush() {
+        if let Some(Err(error)) = self.file.as_mut().map(Write::flush) {
             self.fail(&error);
         }
         Ok(())

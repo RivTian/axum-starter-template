@@ -187,6 +187,8 @@ fn unfinished_compressions_are_cleared_and_done_again() -> TestResult {
     Ok(())
 }
 
+// Unix only: Windows does not delete a directory that holds an open file.
+#[cfg(unix)]
 #[test]
 fn a_deleted_directory_is_created_again_within_a_second() -> TestResult {
     let dir = TempDir::new("deleted")?;
@@ -204,6 +206,8 @@ fn a_deleted_directory_is_created_again_within_a_second() -> TestResult {
     Ok(())
 }
 
+// Unix only: Windows does not delete a directory that holds an open file.
+#[cfg(unix)]
 #[test]
 fn failures_are_counted_where_the_writer_cannot_follow() -> TestResult {
     let dir = TempDir::new("blocked")?;
