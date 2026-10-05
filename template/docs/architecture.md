@@ -133,9 +133,17 @@ first finishes what they left it, such as the events of the last requests.
 
 A service that fails, panics or returns before it called `ready()` fails the startup (69),
 and so does `startup_timeout`. Once a service is ready, the same is a fault (70), whatever
-the other services are doing; only a background service may return `Ok`. A failure during a signal-started shutdown turns it into a fault. A second SIGTERM or
-SIGINT stops at once; SIGHUP is logged and ignored. A client that never finishes sending its
-request headers keeps its connection open until the deadline, and the exit code is then 75.
+the other services are doing; only a background service may return `Ok`. A failure during
+a signal-started shutdown turns it into a fault. A second SIGTERM or SIGINT stops at once;
+SIGHUP is logged and ignored. A client that never finishes sending its request headers
+keeps its connection open until the deadline, and the exit code is then 75.
+
+On Windows the console events stand for the signals: `CTRL_C` and `CTRL_BREAK` for SIGINT
+(Ctrl+C stops at once, a second one cuts the shutdown short), and `CTRL_CLOSE`,
+`CTRL_LOGOFF` and `CTRL_SHUTDOWN` for SIGTERM, which also comes with `docker stop` in a
+Windows container; nothing stands for SIGHUP. Logs and exit codes use the signal names and
+numbers either way. Windows ends the process a few seconds after the last three whatever
+it does, so a drain there must fit in that time.
 
 | Exit code | Meaning                                                                    |
 | --------- | -------------------------------------------------------------------------- |

@@ -10,7 +10,7 @@ use std::time::Duration;
 use svc_config::load::{Inputs, Loaded, load};
 use svc_config::table::{file, overrides, render, rows};
 use svc_runtime::prelude::*;
-use svc_runtime::signal::UnixSignals;
+use svc_runtime::signal::OsSignals;
 use svc_telemetry::subscriber::Environment;
 use svc_util::prelude::*;
 
@@ -124,7 +124,7 @@ fn environment() -> Environment {
 
 /// Installs the signal handlers, then runs the services.
 async fn serve(config: &Config) -> Exit {
-    let signals = match UnixSignals::install() {
+    let signals = match OsSignals::install() {
         Ok(signals) => signals,
         Err(error) => {
             log_error!(
