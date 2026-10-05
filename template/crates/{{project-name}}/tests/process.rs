@@ -1,5 +1,7 @@
 //! The real binary: configuration problems and `check-config`, the command line, a run from
-//! start to a clean stop, signals, the exit codes, `probe`, and a closed stdout.
+//! start to a clean stop, signals, the exit codes, `probe`, and a closed stdout. The tests
+//! that send signals run on Unix only: from outside, a Windows console event cannot be sent
+//! to a single process.
 
 mod support;
 
@@ -157,6 +159,7 @@ fn the_command_line_version_help_and_usage_errors() -> TestResult {
     Ok(())
 }
 
+#[cfg(unix)]
 #[test]
 fn a_run_serves_drains_on_sigterm_and_stops_cleanly() -> TestResult {
     let scratch = Scratch::new("run")?;
@@ -195,6 +198,7 @@ fn a_run_serves_drains_on_sigterm_and_stops_cleanly() -> TestResult {
     Ok(())
 }
 
+#[cfg(unix)]
 #[test]
 fn a_second_signal_cuts_the_drain_short() -> TestResult {
     let scratch = Scratch::new("abort")?;
@@ -213,6 +217,7 @@ fn a_second_signal_cuts_the_drain_short() -> TestResult {
     Ok(())
 }
 
+#[cfg(unix)]
 #[test]
 fn sighup_is_logged_and_ignored() -> TestResult {
     let scratch = Scratch::new("hup")?;
@@ -241,10 +246,12 @@ fn a_port_in_use_fails_the_startup_with_69() -> TestResult {
     let stderr = service.stderr();
     let line = format!("{}: startup failed: service http failed", service_name());
     assert!(stderr.starts_with(&line), "{stderr}");
-    assert!(stderr.contains("in use"), "{stderr}");
+    assert!(stderr.trim_end().ends_with(')'), "the OS error: {stderr}");
+    assert!(stderr.contains("(os error "), "{stderr}");
     Ok(())
 }
 
+#[cfg(unix)]
 #[test]
 fn running_out_of_file_descriptors_is_logged() -> TestResult {
     let scratch = Scratch::new("files")?;
@@ -292,6 +299,9 @@ fn probe_tries_every_address_and_says_why_it_failed() -> TestResult {
     let file = config(&scratch, "0s", "5s", "")?;
     let mut service = Running::start(&file, &[], &[])?;
     let addr = service.running()?;
+    // On every platform, a run serves before it is probed.
+    let (status, _) = request(addr, "POST", "/v1/todos", Some(r#"{"title":"Buy milk"}"#))?;
+    assert_eq!(status, 201);
     // `localhost` may resolve to ::1 first; the service listens on 127.0.0.1 only.
     let url = format!("http://localhost:{}/readyz", addr.port());
     let ok = finish(command(&["probe", &url]))?;
@@ -299,8 +309,7 @@ fn probe_tries_every_address_and_says_why_it_failed() -> TestResult {
         (ok.code, ok.stdout.as_str(), ok.stderr.as_str()),
         (Some(0), "", "")
     );
-    service.signal("INT")?;
-    service.exit(WAIT)?;
+    service.stop()?;
     let down = finish(command(&["probe", &url]))?;
     assert_eq!(down.code, Some(1));
     assert!(

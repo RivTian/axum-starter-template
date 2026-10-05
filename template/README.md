@@ -71,6 +71,11 @@ cargo install --locked just cargo-nextest cargo-deny typos-cli cargo-machete
 [actionlint](https://github.com/rhysd/actionlint).{% endif %}
 {%- if with_docker %} `just docker-build` needs Docker.{% endif %}
 
+The service runs on Linux, macOS and Windows. On Windows the recipes need bash, as Git for
+Windows provides; the console events stand for the signals (see `docs/architecture.md`),
+and the tests that send signals run on Unix only.
+{%- if with_docker %} The container image is Linux only.{% endif %}
+
 ## Commands
 
 | Command | What it does |

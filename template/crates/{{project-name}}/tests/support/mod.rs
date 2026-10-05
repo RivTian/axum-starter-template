@@ -45,7 +45,8 @@ pub(crate) fn command(args: &[&str]) -> Command {
     command
 }
 
-/// Like [`command`], run by the shell with at most `files` open file descriptors.
+/// Like [`command`], run by the shell with at most `files` open file descriptors. Unix only.
+#[cfg(unix)]
 pub(crate) fn command_with_file_limit(files: u32, args: &[&str]) -> Command {
     let mut command = Command::new("sh");
     let script = format!("ulimit -n {files} && exec \"$@\"");
@@ -153,7 +154,8 @@ impl Running {
         Running::spawn(command)
     }
 
-    /// Like [`Running::start`], with at most `files` open file descriptors.
+    /// Like [`Running::start`], with at most `files` open file descriptors. Unix only.
+    #[cfg(unix)]
     pub(crate) fn start_with_file_limit(config: &Path, files: u32) -> TestResult<Self> {
         let config = config.to_string_lossy().into_owned();
         let args = ["run", "--config", config.as_str(), "--log-format", "json"];
@@ -286,7 +288,19 @@ impl Running {
             .parse()?)
     }
 
-    /// Sends a real signal with `kill -s <name>`.
+    /// Stops the service and waits for it: with SIGINT on Unix; on Windows, where no console
+    /// event can be sent to it from here, by ending the process.
+    pub(crate) fn stop(&mut self) -> TestResult {
+        #[cfg(unix)]
+        self.signal("INT")?;
+        #[cfg(windows)]
+        self.child.kill()?;
+        self.exit(WAIT)?;
+        Ok(())
+    }
+
+    /// Sends a real signal with `kill -s <name>`. Unix only.
+    #[cfg(unix)]
     pub(crate) fn signal(&self, name: &str) -> TestResult {
         let status = Command::new("kill")
             .args(["-s", name, &self.child.id().to_string()])

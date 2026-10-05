@@ -1,5 +1,5 @@
 # Quality checks on every push and pull request: the justfile's `check` recipe, the oldest
-# supported Rust, and the console feature.
+# supported Rust, the console feature, and Clippy and the tests on Windows.
 name: ci
 
 on:
@@ -60,3 +60,20 @@ jobs:
         with:
           tool: just,cargo-nextest
       - run: just console-check
+
+  # Cargo directly rather than the recipes, which need bash. The tests that send signals
+  # run on Unix only.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo nextest run --workspace --locked
+      - run: cargo test --workspace --doc --locked

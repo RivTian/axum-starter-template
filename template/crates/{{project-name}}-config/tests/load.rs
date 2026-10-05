@@ -4,7 +4,6 @@
 use std::error::Error;
 use std::ffi::OsString;
 use std::net::SocketAddr;
-use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -229,12 +228,25 @@ fn an_unreadable_file_is_one_problem() {
     );
 }
 
+/// `x` and then something that is not Unicode: a byte that is not UTF-8 on Unix, a lone
+/// surrogate on Windows.
+fn not_utf8() -> OsString {
+    #[cfg(unix)]
+    let text = {
+        use std::os::unix::ffi::OsStringExt;
+        OsString::from_vec(vec![b'x', 0xff])
+    };
+    #[cfg(windows)]
+    let text = {
+        use std::os::windows::ffi::OsStringExt;
+        OsString::from_wide(&[u16::from(b'x'), 0xD800])
+    };
+    text
+}
+
 #[test]
 fn a_value_that_is_not_utf8_is_a_problem_unless_a_later_source_replaces_it() {
-    let bad = vec![(
-        OsString::from("APP_LOG__FILTER"),
-        OsString::from_vec(vec![b'x', 0xff]),
-    )];
+    let bad = vec![(OsString::from("APP_LOG__FILTER"), not_utf8())];
     assert_eq!(
         load_with(None, &bad, &[]).err(),
         Some(vec!["invalid configuration: log.filter (env APP_LOG__FILTER): expected UTF-8 text, got \"x\u{fffd}\"".to_string()])

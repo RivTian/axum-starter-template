@@ -73,9 +73,9 @@ console-check:
     cargo nextest run -p {{project-name}}-telemetry --features console ${CARGO_LOCKED:-} -E 'test(the_console_needs_tokio_unstable)'
     RUSTFLAGS="--cfg tokio_unstable" CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}/console" cargo check --bin {{project-name}} --features {{project-name}}/console ${CARGO_LOCKED:-}
 
-# A release archive: dist/{{project-name}}-<version>-<target>.tar.gz with the binary,
-# README.md, THIRD_PARTY_NOTICES.md and LICENSE (when there is one), and its SHA-256 next
-# to it, which `shasum -a 256 -c` checks.
+# A release archive: dist/{{project-name}}-<version>-<target>.tar.gz with the binary
+# (`.exe` on Windows), README.md, THIRD_PARTY_NOTICES.md and LICENSE (when there is one), and
+# its SHA-256 next to it, which `shasum -a 256 -c` or `sha256sum -c` checks.
 package:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -83,11 +83,15 @@ package:
     target="$(rustc -vV | sed -n 's/^host: //p')"
     version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
     name="{{project-name}}-${version}-${target}"
+    exe=""
+    case "$target" in *windows*) exe=".exe" ;; esac
     rm -rf "dist/${name}" && mkdir -p "dist/${name}"
-    cp "${CARGO_TARGET_DIR:-target}/release/{{project-name}}" README.md THIRD_PARTY_NOTICES.md "dist/${name}/"
+    cp "${CARGO_TARGET_DIR:-target}/release/{{project-name}}${exe}" README.md THIRD_PARTY_NOTICES.md "dist/${name}/"
     if [ -f LICENSE ]; then cp LICENSE "dist/${name}/"; fi
     tar -C dist -czf "dist/${name}.tar.gz" "${name}"
-    (cd dist && shasum -a 256 "${name}.tar.gz" > "${name}.tar.gz.sha256")
+    # Git for Windows has sha256sum but may lack shasum; both write the same line.
+    if command -v shasum >/dev/null; then sum=(shasum -a 256); else sum=(sha256sum); fi
+    (cd dist && "${sum[@]}" "${name}.tar.gz" > "${name}.tar.gz.sha256")
     echo "dist/${name}.tar.gz"
 {%- if with_docker %}
 
